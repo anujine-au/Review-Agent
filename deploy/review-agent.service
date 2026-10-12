@@ -1,0 +1,21 @@
+[Unit]
+Description=Review Agent (audit report reviewer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+Environment=NODE_ENV=production
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-__DIR__/deploy/env
+ExecStart=/usr/bin/env node server/server.js --lan --port ${PORT}
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+{
+  // Explorer-т зөвхөн кодын файл харагдана (.md заавар, өгөгдлийн хавтсууд нуугдана — устаагүй)
+  "files.exclude": {
+    "**/*.md": true,
+    ".claude": true,
+    ".vscode": true,
+    "jobs": true,
+    "logs": true,
+    "web/access_code.txt": true
+  },
+  "search.exclude": {
+    "jobs": true,
+    "logs": true
+  },
+  // PowerShell 5.1 кирилл бичвэрийг зөв уншихын тулд .ps1 файлууд UTF-8 with BOM байх ёстой
+  "[powershell]": {
+    "files.encoding": "utf8bom"
+  }
+}

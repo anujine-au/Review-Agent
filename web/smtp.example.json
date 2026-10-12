@@ -1,0 +1,12 @@
+{
+  "_note": "Имэйл мэдэгдэл: энэ файлыг web/smtp.json нэрээр хуулж, IT-ээс авсан мэдээллээр бөглөөд enabled=true болгоно. web/ хавтас EFS-ээр шифрлэгдэнэ; config/ руу БҮҮ хий (Claude-ийн sandbox руу хуулагддаг).",
+  "enabled": false,
+  "host": "smtp.netgroup.mn",
+  "port": 587,
+  "secure": false,
+  "from": "review-agent@netgroup.mn",
+  "user": "review-agent@netgroup.mn",
+  "password": "",
+  "domain": "netgroup.mn",
+  "base_url": "https://10.0.19.61:8443"
+}
