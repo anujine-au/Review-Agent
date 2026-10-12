@@ -13,7 +13,7 @@ PORT="${PORT:-8443}"
 cd "$APP_DIR"
 
 log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
-restart() { sudo systemctl restart "$SERVICE"; }
+restart() { systemctl --user restart "$SERVICE"; }
 healthy() {
   for _ in $(seq 1 15); do
     curl -fsk -o /dev/null "https://127.0.0.1:${PORT}/" && return 0
@@ -28,7 +28,7 @@ if [ "${1:-}" = "--rollback" ]; then
   log "Буцаж байна → $prev"
   git reset --hard "$prev"
   restart
-  healthy && log "OK ($(git rev-parse --short HEAD))" || { log "Сервис эхэлсэнгүй: journalctl -u $SERVICE -n 50"; exit 1; }
+  healthy && log "OK ($(git rev-parse --short HEAD))" || { log "Сервис эхэлсэнгүй: journalctl --user -u $SERVICE -n 50"; exit 1; }
   exit 0
 fi
 
@@ -74,6 +74,6 @@ else
   log "Сервис хариу өгөхгүй байна — өмнөх хувилбар руу буцааж байна"
   git reset --hard --quiet "$before"
   restart
-  healthy && log "Өмнөх хувилбар сэргэлээ" || log "Анхаар: сервис эхлэхгүй байна — journalctl -u $SERVICE -n 50"
+  healthy && log "Өмнөх хувилбар сэргэлээ" || log "Анхаар: сервис эхлэхгүй байна — journalctl --user -u $SERVICE -n 50"
   exit 1
 fi
