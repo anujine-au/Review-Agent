@@ -1,0 +1,217 @@
+openapi: 3.1.0
+info:
+  title: SP-118-04 Audit Report Final Review Agent — Backend API
+  version: "1.0"
+  description: |
+    Аудитын тайлангийн эцсийн хяналтын агентын backend (Node.js). UI нь зөвхөн энэ API-г дууддаг тул
+    backend-ийг дангаар нь өөр системд (Netbase, SSO г.м.) холбож болно. SP-118-04/03-ийн гэрээтэй нийцүүлсэн.
+
+    **Хэн бэ (identity):**
+    - Нэвтрэлт асаалттай үед: `Authorization: Bearer <token>` (`POST /login`).
+    - Нэвтрэлтгүй горимд (одоогийн): `X-AR-Role: cae | reviewer | auditor | viewer`, `X-AR-Name: <URI-encoded нэр>`.
+      Эрхийг backend шалгана (policy: server/users.js PERMS). SSO холбоход зөвхөн энэ давхарга солигдоно.
+
+    **Хувилбар:** зам бүр `/api/v1/...` (= `/api/...`). Rulepack, prompt, schema хувилбарыг `GET /version`.
+    **Аюулгүй байдал:** зөвхөн localhost эсвэл LAN HTTPS; Host header, cross-origin хаалттай.
+servers:
+  - url: http://localhost:8080/api/v1
+  - url: https://{host}:8443/api/v1
+    variables: { host: { default: localhost } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+    role: { type: apiKey, in: header, name: X-AR-Role }
+  schemas:
+    Error: { type: object, properties: { error: { type: string } } }
+    Severity: { type: string, enum: [R1, R2, R3, R4] }
+    Verdict: { type: string, enum: [READY, READY_WITH_FIXES, NOT_READY, ESCALATE, RUN_REJECTED] }
+    Decision: { type: string, enum: [APPROVED, EDITED, REJECTED] }
+    JobSummary:
+      type: object
+      properties:
+        id: { type: string, example: 20261008-155443-pver0s }
+        created: { type: string }
+        created_by: { type: string }
+        audit: { $ref: '#/components/schemas/Audit' }
+        status: { type: string, enum: [draft, queued, extracting, running, done, failed, cancelled] }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        r1: { type: integer }
+        r2: { type: integer }
+        r3: { type: integer }
+        r4: { type: integer }
+        cycle_no: { type: integer, description: "1 = анхны хяналт, 2+ = дахин хяналт (M14)" }
+        parent_id: { type: string, description: Анхны review (дахин хяналтад) }
+        recheck: { type: object, description: "RESOLVED / PARTIAL / NOT_RESOLVED / REGRESSED / NOT_APPLICABLE / UNABLE / new тоо" }
+        finalized: { $ref: '#/components/schemas/Finalized' }
+    Audit:
+      type: object
+      properties: { name: { type: string }, code: { type: string }, branch: { type: string }, objective: { type: string }, period: { type: string }, report_date: { type: string }, notes: { type: string } }
+    Finalized:
+      type: object
+      properties:
+        reg_no: { type: string, example: RPT-174-2026-001 }
+        approved_at: { type: string }
+        approved_by: { type: string }
+        final_job: { type: string }
+        final_cycle: { type: integer }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+        archive: { type: string }
+    Issue:
+      type: object
+      description: review_findings.json → issues[] (schema v3, prompts/output_template.md)
+      properties:
+        id: { type: string, example: RV-IA-2026-AS-004-C1-007 }
+        severity: { $ref: '#/components/schemas/Severity' }
+        module: { type: string, example: M05 }
+        rule: { type: string, example: M05-01 }
+        source: { type: string, example: DOC-1912 Хав. B }
+        confidence: { type: string, enum: [High, Medium, Low] }
+        origin: { type: string, enum: [rule_engine, llm] }
+        anchor: { type: string, example: P12 }
+        quote: { type: string }
+        title: { type: string }
+        issue: { type: string }
+        required_action: { type: string }
+        impacts: { type: array, items: { type: object, properties: { element: { type: string }, anchor: { type: string }, action: { type: string } } } }
+        quote_check: { type: object, properties: { status: { type: string, enum: [exact, relocated, partial, not_found, no_quote] } } }
+security: [ { bearer: [] }, { role: [] } ]
+paths:
+  /version:
+    get:
+      summary: API, rulepack, prompt, schema хувилбар
+      responses: { '200': { description: OK } }
+  /openapi.yaml:
+    get: { summary: Энэ гэрээ, responses: { '200': { description: OK } } }
+  /me:
+    get: { summary: Одоогийн хэрэглэгч, role, эрхүүд (perms), responses: { '200': { description: OK } } }
+  /jobs:
+    get:
+      summary: Review-ийн жагсаалт (аудитор зөвхөн өөрийнхийг)
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: object, properties: { jobs: { type: array, items: { $ref: '#/components/schemas/JobSummary' } } } } } } } }
+    post:
+      summary: Review (submission) үүсгэх — S1. parent_id өгвөл засварласан хувилбарын дахин хяналт (M14)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Audit'
+                - type: object
+                  properties: { mask: { type: boolean, default: true }, send_images: { type: boolean, default: false }, parent_id: { type: string } }
+      responses: { '201': { description: '{ id }' }, '409': { description: Анхны review дуусаагүй эсвэл эцэслэн батлагдсан } }
+  /jobs/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+    get: { summary: Review-ийн дэлгэрэнгүй (төлөв, файлууд, decisions, cycle_no, cycle_warning, rechecks, events), responses: { '200': { description: OK } } }
+    delete: { summary: Устгах, responses: { '200': { description: OK } } }
+  /jobs/{id}/files:
+    put:
+      summary: Файл оруулах (body = файл). cat = report | excel | program | evidence | followup
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: cat, in: query, required: true, schema: { type: string, enum: [report, excel, program, evidence, followup] } }
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses: { '201': { description: OK }, '400': { description: Өргөтгөл/агуулга таарахгүй } }
+  /jobs/{id}/files-url:
+    post:
+      summary: Линкээс файл татах (Google Docs/Sheets/Drive, OneDrive, https). Линк нийтэд нээлттэй байх ёстой
+      requestBody: { content: { application/json: { schema: { type: object, properties: { cat: { type: string }, url: { type: string } } } } } }
+      responses: { '201': { description: OK } }
+  /jobs/{id}/start:
+    post: { summary: Хяналт эхлүүлэх (Gate-0 → Rule Engine → LLM → эцэслэл), responses: { '200': { description: OK }, '400': { description: Тайлан алга (G0-01) } } }
+  /jobs/{id}/cancel:
+    post: { summary: Зогсоох, responses: { '200': { description: OK } } }
+  /jobs/{id}/output/{file}:
+    get:
+      summary: Үр дүн — review_findings.json | review_summary.json | review_report.md | recheck.json. Аудиторт зөвхөн APPROVED/EDITED санал
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: string } }
+      responses: { '200': { description: OK } }
+  /jobs/{id}/decisions:
+    post:
+      summary: Захирлын шийдвэр бөөнөөр (S5)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items: { type: array, items: { type: object, properties: { id: { type: string }, decision: { $ref: '#/components/schemas/Decision' }, edited_text: { type: string }, note: { type: string } } } }
+      responses: { '200': { description: '{ ok, decisions }' }, '409': { description: Бэлтгэгч ≠ шийдвэр гаргагч, эсвэл эцэслэн батлагдсан } }
+  /jobs/{id}/decisions/{issueId}:
+    patch:
+      summary: Нэг саналын шийдвэр (decision = null бол буцаана)
+      responses: { '200': { description: OK } }
+  /jobs/{id}/finalize:
+    post:
+      summary: Эцсийн батлалт (S10, зөвхөн захирал) — сүүлийн давталт READY / READY_WITH_FIXES байх; бүртгэлийн дугаар, архив, түгжих
+      requestBody: { content: { application/json: { schema: { type: object, properties: { note: { type: string } } } } } }
+      responses: { '200': { description: '{ ok, finalized }' }, '403': { description: Захирал биш }, '409': { description: R1 үлдсэн эсвэл аль хэдийн батлагдсан } }
+  /jobs/{id}/export/{format}:
+    get:
+      summary: Татах — task (аудиторт илгээх даалгавар) | pdf | docx | xlsx | html | zip | gdocx
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: format, in: path, required: true, schema: { type: string } }
+      responses: { '200': { description: Файл }, '409': { description: task — зөвшөөрсөн санал алга } }
+  /jobs/{id}/document:
+    get: { summary: Тайлангийн бүтэц (догол мөр P#, хүснэгт T#R#), responses: { '200': { description: OK } } }
+  /jobs/{id}/sources:
+    get: { summary: Эх файлуудын жагсаалт (нотолгооны холбоос), responses: { '200': { description: OK } } }
+  /jobs/{id}/previous:
+    get: { summary: Дахин хяналтад шалгасан өмнөх саналууд, responses: { '200': { description: OK } } }
+  /library:
+    get: { summary: Модуль (skill), шалгуур, стандарт баримт, дүрмийн файл, хувилбар, responses: { '200': { description: OK } } }
+  /library/rules/{key}:
+    get: { summary: Агентын дүрмийн файл (system_prompt | decision_rules | writing_standard | output_template), responses: { '200': { description: text/markdown } } }
+  /criteria/{docId}:
+    get:
+      summary: Стандарт баримтын текст ба тухайн хэсэг (?sec=§5.2). docId = DOC-1912 | DAG | ISO | GIAS | GIAS-TR | SP-01..SP-04
+      responses: { '200': { description: OK } }
+  /logs:
+    get:
+      summary: Лог (type = ai | audit) + hash-chain бүрэн бүтэн байдал
+      parameters: [ { name: type, in: query, schema: { type: string, enum: [ai, audit] } }, { name: limit, in: query, schema: { type: integer } } ]
+      responses: { '200': { description: '{ type, integrity, entries }' } }
+  # ---- Ажлын урсгал (2026-10-12) ----
+  /jobs/{id}/submit:
+    post: { summary: 'DRAFT → SUBMITTED (v1). Тайлан + хөтөлбөр заавал. /start нь ижил. AI шууд ажиллахгүй (AI төлөв pending) — /ai-review хүлээнэ', responses: { '200': { description: '{ ok, version }' }, '409': { description: 'Буруу төлөв' } } }
+  /jobs/{id}/resubmit:
+    post:
+      summary: 'RETURNED → RESUBMITTED (v{n+1}) — засварын job дээр; note (юу зассан) заавал. Excel/хөтөлбөр оруулаагүй бол өмнөхийг ашиглана'
+      requestBody: { content: { application/json: { schema: { type: object, required: [note], properties: { note: { type: string, maxLength: 2000 } } } } } }
+      responses: { '200': { description: '{ ok, version }' }, '400': { description: 'note алга' }, '409': { description: 'Буруу төлөв' } }
+  /jobs/{id}/ai-review:
+    post: { summary: 'Захирал «AI хянуулах» (job.runAI — cae, admin): pending / failed / cancelled хувилбарыг дараалалд оруулна (тасарсан бол эх файлыг originals/-аас сэргээнэ). Зөвхөн SUBMITTED / RESUBMITTED-ийн сүүлийн хувилбар', responses: { '200': { description: '{ ok, version }' }, '403': { description: Эрхгүй }, '409': { description: 'Буруу төлөв / аль хэдийн ажиллаж байна' } } }
+  /jobs/{id}/release:
+    get: { summary: 'Урьдчилан харах: { version, sent, excluded, undecided }', responses: { '200': { description: OK } } }
+    post:
+      summary: 'CAE_REVIEW → RETURNED. feedback_v{n}.json царцаана, багт мэдэгдэл (job.release — зөвхөн cae; бэлтгэгч → 409)'
+      requestBody: { content: { application/json: { schema: { type: object, properties: { exclude_undecided: { type: boolean }, note: { type: string } } } } } }
+      responses: { '200': { description: OK }, '403': { description: Эрхгүй }, '409': { description: 'Шийдвэрлээгүй санал / буруу төлөв / бэлтгэгч' } }
+  /jobs/{id}/feedback/{n}:
+    get: { summary: 'Царцсан feedback (зөвхөн release хийсэн хувилбар)', responses: { '200': { description: '{ version, released_at, items[] }' }, '404': { description: 'Илгээгдээгүй' } } }
+  /jobs/{id}/versions:
+    get: { summary: 'Хувилбарын timeline (аудиторт verdict-гүй)', responses: { '200': { description: '{ root, workflow, versions[] }' } } }
+  /jobs/{id}/diff:
+    get:
+      summary: 'Хувилбар хоорондын ялгаа (догол мөрөөр) — зөвхөн захирал/хянагч'
+      parameters: [ { name: from, in: query, schema: { type: integer } }, { name: to, in: query, schema: { type: integer } } ]
+      responses: { '200': { description: '{ from, to, added, removed, ops[] }' } }
+  /jobs/{id}/final/{format}:
+    get:
+      summary: 'Эцсийн тайлан (APPROVED_FINAL, job.downloadFinal): docx | pdf | zip'
+      parameters: [ { name: format, in: path, required: true, schema: { type: string, enum: [docx, pdf, zip] } } ]
+      responses: { '200': { description: Файл }, '403': { description: Эрхгүй }, '409': { description: Батлагдаагүй } }
+  /jobs/{id}/cancel-workflow:
+    post: { summary: 'Аль ч төлөв → CANCELLED (note заавал; cae, admin)', responses: { '200': { description: OK } } }
+  /jobs/{id}/originals:
+    get: { summary: 'Хувилбар бүрийн эх файл (/originals/file?job=&cat=&name=, /originals/zip)', responses: { '200': { description: '{ root, versions[] }' } } }
+  /jobs/{id}/comments:
+    post: { summary: 'Гараар тэмдэглэл (MAN-NNN) — анхны болон засварласан хувилбар', responses: { '200': { description: OK }, '409': { description: Бэлтгэгч / батлагдсан } } }
+  /notifications:
+    get: { summary: 'Миний мэдэгдэл (сүүлийн 50) + уншаагүй тоо', responses: { '200': { description: '{ unread, items[] }' } } }
+  /notifications/read:
+    post: { summary: 'Уншсан болгох { ids[] | all: true }', responses: { '200': { description: OK } } }
+  /team-candidates:
+    get: { summary: 'Баг сонгох — аудитор, ахлах аудитор', responses: { '200': { description: '{ users[] }' } } }

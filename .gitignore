@@ -1,0 +1,28 @@
+# ---- Өгөгдөл: git-д ХЭЗЭЭ Ч орохгүй (сервер дээр л байна) ----
+jobs/
+logs/
+archive/
+input/
+output/
+work/
+followup/
+criteria/
+recreq/
+_archive_ps1/
+
+# Нууц / хэрэглэгч / сертификат
+web/users.json
+web/access_code.txt
+web/auth_settings.json
+web/smtp.json
+web/tls.*
+web/[A-C][0-9]
+
+# Систем
+node_modules/
+.claude/settings.local.json
+*.log
+.DS_Store
+Thumbs.db
+deploy/env
+.deploy-prev

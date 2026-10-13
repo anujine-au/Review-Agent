@@ -1,0 +1,13 @@
+{
+  "name": "audit-report-reviewer",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Салбарын аудитын тайлангийн дээд шатны review агент — вэб хэрэглүүр (Node.js, гадны сангүй)",
+  "main": "server/server.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/server.js",
+    "start:lan": "node server/server.js --lan",
+    "extract": "node server/extract.js --in input --out work/extracted"
+  }
+}
