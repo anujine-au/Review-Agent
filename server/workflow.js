@@ -1,10 +1,11 @@
 'use strict';
 /*
   Ажлын урсгал (бизнесийн төлөв) — state.status (AI-ийн гүйцэтгэл)-ээс тусдаа.
-    DRAFT ─хянуулах→ SUBMITTED ─AI дуусав→ CAE_REVIEW ─батлаад илгээх→ RETURNED ─засаад дахин→ RESUBMITTED ─AI→ CAE_REVIEW …
+    DRAFT ─хянуулах→ SUBMITTED ─захирал «AI хянуулах»→ AI дуусав→ CAE_REVIEW ─батлаад илгээх→ RETURNED ─засаад дахин→ RESUBMITTED ─AI→ CAE_REVIEW …
     CAE_REVIEW ─эцэслэн батлах→ APPROVED_FINAL (түгжинэ);  аль ч (эцсийнхээс бусад) → CANCELLED
   Төлөв зөвхөн ROOT job-ийн job.json.workflow-д хадгалагдана; дахин хяналтын job-ууд (parent_id) нь хувилбар v2, v3…
   Хувилбар v{n} = C{n} = гинжийн n дэх job (root = v1).
+  Илгээхэд AI шууд ажиллахгүй: job.json.awaiting_ai = true (AI төлөв «pending»); захирал «AI хянуулах» дарахад queued болно (2026-10-13).
 
   Хуучин job (workflow талбаргүй): уншихдаа тооцоолно — finalized → APPROVED_FINAL, сүүлийн хувилбар done → CAE_REVIEW,
   ажиллаж байгаа → SUBMITTED / RESUBMITTED, эс бөгөөс DRAFT. Файлыг өөрчлөхгүй (эхний шилжилтээр бичигдэнэ).
@@ -26,6 +27,8 @@ const LABEL = {
 // Зөвшөөрөгдсөн шилжилт (CANCELLED-ийг тусад нь)
 const EDGES = { DRAFT: ['SUBMITTED'], SUBMITTED: ['CAE_REVIEW'], CAE_REVIEW: ['RETURNED', 'APPROVED_FINAL'], RETURNED: ['RESUBMITTED'], RESUBMITTED: ['CAE_REVIEW'] };
 const AI_RUNNING = ['queued', 'extracting', 'running'];
+// AI-г захирал эхлүүлэх боломжтой төлөв: илгээгдээд хүлээж буй, эсвэл тасарсан
+const AI_STARTABLE = ['pending', 'failed', 'cancelled'];
 
 const jobsDir = () => C.PATHS.jobs;
 const jdir = id => path.join(jobsDir(), id);
@@ -36,7 +39,8 @@ const isJobId = id => /^\d{8}-\d{6}-[a-z0-9]{6}$/.test(id);
 function aiStatus(id) {
   const st = C.readJson(path.join(jdir(id), 'state.json'));
   if (st && st.status) return st.status;
-  return meta(id).queued ? 'queued' : 'draft';
+  const j = meta(id);
+  return j.queued ? 'queued' : j.awaiting_ai ? 'pending' : 'draft';
 }
 const rootOf = id => meta(id).parent_id || id;
 /** Гинж: [root, дахин хяналт 1, 2, …] — round-оор эрэмбэлсэн */
@@ -234,6 +238,6 @@ function diff(fromJob, toJob) {
 }
 
 module.exports = {
-  STATES, LABEL, rootOf, chain, versions, teamOf, isTeam, stateOf, transition, sync, setAudit, aiStatus,
+  STATES, LABEL, AI_STARTABLE, rootOf, chain, versions, teamOf, isTeam, stateOf, transition, sync, setAudit, aiStatus,
   draftFeedback, freezeFeedback, readFeedback, latestFeedback, releasedVersions, seesInternals, restrictJob, diff,
 };

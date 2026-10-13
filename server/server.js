@@ -247,7 +247,7 @@ function jobStatus(dir) {
     return state.status;
   }
   const job = C.readJson(path.join(dir, 'job.json'));
-  return job && job.queued ? 'queued' : 'draft';
+  return job && job.queued ? 'queued' : job && job.awaiting_ai ? 'pending' : 'draft';
 }
 function jobFiles(dir) {
   const out = [];
@@ -717,7 +717,7 @@ async function handle(req, res) {
       o.version_no = WF.versions(rootId).indexOf(id) + 1 || null;   // гинж доторх дараалал (v1, v2…)
       o.can = { release: U.can(session.role, 'job.release') && !isPreparer(session, id), finalize: U.can(session.role, 'job.finalize') && !isPreparer(session, id),
         resubmit: (inTeam || U.can(session.role, 'job.cancelAny')) && U.can(session.role, 'job.create'), downloadFinal: U.can(session.role, 'job.downloadFinal'),
-        cancelWorkflow: U.can(session.role, 'job.cancelWorkflow'), decide: U.can(session.role, 'issue.decide') && !isPreparer(session, id) };
+        cancelWorkflow: U.can(session.role, 'job.cancelWorkflow'), runAI: U.can(session.role, 'job.runAI'), decide: U.can(session.role, 'issue.decide') && !isPreparer(session, id) };
       o.ai_run_id = state.ai_run_id;
       o.standard = { rulepack: S.RULEPACK, prompt_template_id: S.PROMPT_TEMPLATE_ID };
       o.rechecks = listJobIds().filter(x => jobMeta(x).parent_id === id && canSeeJob(session, jobDir(x))).map(jobSummary);
@@ -833,8 +833,9 @@ async function handle(req, res) {
       // Эх файлуудыг илгээх агшинд хувилбарт хадгална (AI шалгалт дуусахыг хүлээхгүй)
       try { ORIG.snapshot(dir); } catch (e) { console.error('originals snapshot:', e.message); }
       // transition нь root-ийн job.json-д workflow бичсэн тул дахин уншиж нэмнэ
-      C.writeJson(path.join(dir, 'job.json'), { ...(C.readJson(path.join(dir, 'job.json')) || job), queued: true, files, submitted_by: who, submitted_at: C.nowIso(), ...(isResubmit ? { resubmit_note: note } : {}) });
-      log('JOB_START', `${id} files=${files.length} v${version}`);
+      // AI шууд ажиллахгүй — захирал «AI хянуулах» дарахыг хүлээнэ (захиралд олон тайлан ирдэг тул өөрөө сонгоно, 2026-10-13)
+      C.writeJson(path.join(dir, 'job.json'), { ...(C.readJson(path.join(dir, 'job.json')) || job), queued: false, awaiting_ai: true, files, submitted_by: who, submitted_at: C.nowIso(), ...(isResubmit ? { resubmit_note: note } : {}) });
+      log('JOB_SUBMIT', `${id} files=${files.length} v${version}`);
       auditLog('submission', { job: id, root: rootId, version, user: who, role: session.role, cycle_no: version, parent: job.parent_id || null,
         files: files.map(f => ({ category: f.category, sha256: AL.fileSha256(path.join(dir, 'input', f.category, f.name)), size: f.size })) });
       // Захиралд мэдэгдэл; захирал бүртгэлгүй бол admin-д (хүсэлт хэнд ч хүрэхгүй үлдэхээс сэргийлнэ)
@@ -843,9 +844,33 @@ async function handle(req, res) {
       if (!caes.length) caes = actUsers.filter(u => u.role === 'admin').map(u => u.username);
       const au = jobMeta(rootId).audit || {};
       NT.send(caes, { kind: isResubmit ? 'RESUBMITTED' : 'SUBMITTED', job: rootId, version, audit: au,
-        text: `${isResubmit ? `Засварласан хувилбар (v${version}) хянуулах хүсэлт ирлээ` : 'Шинэ хянуулах хүсэлт ирлээ'}: ${[au.code, au.branch, au.name].filter(Boolean).join(' · ')} — илгээсэн: ${session.name || who}` });
-      startNext();
+        text: `${isResubmit ? `Засварласан хувилбар (v${version}) хянуулах хүсэлт ирлээ` : 'Шинэ хянуулах хүсэлт ирлээ'}: ${[au.code, au.branch, au.name].filter(Boolean).join(' · ')} — илгээсэн: ${session.name || who}. AI хяналтыг «AI хянуулах» товчоор эхлүүлнэ.` });
       return sendJson(res, 200, { ok: true, version });
+    }
+
+    // Захирал «AI хянуулах» — илгээсэн хувилбарыг AI-аар шалгуулж эхлүүлнэ (тасарсан бол дахин)
+    if (m === 'POST' && rest === '/ai-review') {
+      if (!U.can(session.role, 'job.runAI')) return deny();
+      if (!WF.AI_STARTABLE.includes(status)) return sendErr(res, 409, `AI төлөв: ${status} — зөвхөн илгээгдээд хүлээж буй эсвэл тасарсан хувилбарыг эхлүүлнэ`);
+      const wf = WF.stateOf(rootId);
+      if (!['SUBMITTED', 'RESUBMITTED'].includes(wf.state)) return sendErr(res, 409, `Төлөв «${wf.label}» — AI хяналт эхлүүлэх боломжгүй`);
+      if (wf.latest !== id) return sendErr(res, 409, 'Зөвхөн сүүлийн илгээсэн хувилбарыг AI-аар шалгуулна');
+      if (!fs.existsSync(path.join(P.prompts, 'system_prompt.md'))) return sendErr(res, 409, 'Review-ийн нөхцөл (prompts/system_prompt.md) тохируулаагүй байна.');
+      // Тасарсан бол: эх файлыг originals/-аас сэргээж, хуучин гүйцэтгэлийн үлдэгдлийг цэвэрлэнэ
+      if (status !== 'pending') {
+        for (const it of ORIG.list(dir)) {
+          const src = ORIG.fileOf(dir, it.cat, it.name), dest = path.join(dir, 'input', it.cat, it.name);
+          if (src && !fs.existsSync(dest)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src.path, dest); }
+        }
+        if (!jobFiles(dir).some(f => f.category === 'report')) return sendErr(res, 409, 'Эх файл хадгалагдаагүй тул дахин шалгах боломжгүй — аудитор дахин илгээнэ үү');
+        C.rmrf(path.join(dir, 'sandbox', 'output')); C.rmrf(path.join(dir, 'state.json'));
+      }
+      const job = C.readJson(path.join(dir, 'job.json')) || {};
+      C.writeJson(path.join(dir, 'job.json'), { ...job, queued: true, ai_requested_by: who, ai_requested_at: C.nowIso() });
+      log('JOB_START', `${id} v${wf.version}${status !== 'pending' ? ` retry(${status})` : ''}`);
+      auditLog('ai.start', { job: id, root: rootId, version: wf.version, user: who, role: session.role, retry: status !== 'pending' });
+      startNext();
+      return sendJson(res, 200, { ok: true, version: wf.version });
     }
 
     if (m === 'POST' && rest === '/cancel') {

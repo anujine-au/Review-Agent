@@ -175,12 +175,14 @@ paths:
       responses: { '200': { description: '{ type, integrity, entries }' } }
   # ---- Ажлын урсгал (2026-10-12) ----
   /jobs/{id}/submit:
-    post: { summary: 'DRAFT → SUBMITTED (v1). Тайлан + хөтөлбөр заавал. /start нь ижил', responses: { '200': { description: '{ ok, version }' }, '409': { description: 'Буруу төлөв' } } }
+    post: { summary: 'DRAFT → SUBMITTED (v1). Тайлан + хөтөлбөр заавал. /start нь ижил. AI шууд ажиллахгүй (AI төлөв pending) — /ai-review хүлээнэ', responses: { '200': { description: '{ ok, version }' }, '409': { description: 'Буруу төлөв' } } }
   /jobs/{id}/resubmit:
     post:
       summary: 'RETURNED → RESUBMITTED (v{n+1}) — засварын job дээр; note (юу зассан) заавал. Excel/хөтөлбөр оруулаагүй бол өмнөхийг ашиглана'
       requestBody: { content: { application/json: { schema: { type: object, required: [note], properties: { note: { type: string, maxLength: 2000 } } } } } }
       responses: { '200': { description: '{ ok, version }' }, '400': { description: 'note алга' }, '409': { description: 'Буруу төлөв' } }
+  /jobs/{id}/ai-review:
+    post: { summary: 'Захирал «AI хянуулах» (job.runAI — cae, admin): pending / failed / cancelled хувилбарыг дараалалд оруулна (тасарсан бол эх файлыг originals/-аас сэргээнэ). Зөвхөн SUBMITTED / RESUBMITTED-ийн сүүлийн хувилбар', responses: { '200': { description: '{ ok, version }' }, '403': { description: Эрхгүй }, '409': { description: 'Буруу төлөв / аль хэдийн ажиллаж байна' } } }
   /jobs/{id}/release:
     get: { summary: 'Урьдчилан харах: { version, sent, excluded, undecided }', responses: { '200': { description: OK } } }
     post:

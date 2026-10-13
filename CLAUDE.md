@@ -28,6 +28,7 @@
 ## Вэб хэрэгслийн ажлын урсгал
 
 - Төлөв: `DRAFT → SUBMITTED → CAE_REVIEW → RETURNED → RESUBMITTED → … → APPROVED_FINAL` (`server/workflow.js`). Аудитор release хүртэл AI-ийн санал харахгүй; зөвхөн `jobs/<root>/feedback/feedback_v{n}.json` (царцсан).
+- Хянуулах хүсэлт (SUBMITTED / RESUBMITTED) илгээхэд AI шууд ажиллахгүй (AI төлөв `pending`); захирал тайлан бүр дээр «AI хянуулах» (`POST /api/jobs/<id>/ai-review`, эрх `job.runAI`) дарж эхлүүлнэ. AI нэг удаад нэг тайлан шалгах хооронд захирал бусад дууссан тайлангийн саналыг шийдвэрлэж болно.
 - Засварын дахин хяналт (M14) нь сүүлийн release хийсэн feedback-ийн эсрэг шалгана (`runner.previousIssues`).
 - Тест: `node --test tests/workflow.test.js`.
 

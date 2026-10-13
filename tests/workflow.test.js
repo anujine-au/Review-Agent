@@ -214,7 +214,8 @@ test('12. Шинэ хүсэлт (workflow-гүй ноорог) ахлах ауд
   const st = await call(tokens.lead1, 'POST', `/api/jobs/${id}/start`, {});
   assert.equal(st.status, 200, String(st.buf));
   const j = await call(tokens.lead1, 'GET', `/api/jobs/${id}`);
-  assert.ok(['SUBMITTED', 'CAE_REVIEW'].includes(j.json.workflow.state), j.json.workflow.state);
+  assert.equal(j.json.workflow.state, 'SUBMITTED');
+  assert.equal(j.json.status, 'pending', 'илгээхэд AI шууд ажиллах ёсгүй');
   assert.equal(j.json.workflow.version, 1);
   // багийн гишүүн (aud1) харж чадна, захиралд мэдэгдэл
   assert.equal((await call(tokens.aud1, 'GET', `/api/jobs/${id}`)).status, 200);
@@ -241,4 +242,25 @@ test('14. Илгээсний дараа ахлах аудитор илгээсэ
   assert.equal(v.json.versions[0].verdict, undefined);
   const n = await call(tokens.cae1, 'GET', '/api/notifications');
   assert.ok(n.json.items.some(x => x.job === id && /Шинэ хянуулах хүсэлт ирлээ/.test(x.text)));
+});
+
+test('15. Илгээхэд AI ажиллахгүй; зөвхөн захирал «AI хянуулах»; AI ажиллах зуур өөр тайлангийн саналыг шийдвэрлэнэ', { timeout: 60000 }, async () => {
+  const c = await call(tokens.lead1, 'POST', '/api/jobs', { code: 'T-AI', branch: 'Эрдэнэт', name: 'AI товч' });
+  const id = c.json.id, f = Buffer.concat([Buffer.from('504B0304', 'hex'), Buffer.from('ai')]);
+  await call(tokens.lead1, 'PUT', `/api/jobs/${id}/files?cat=report&name=R.docx`, f, true);
+  await call(tokens.lead1, 'PUT', `/api/jobs/${id}/files?cat=program&name=P.docx`, f, true);
+  assert.equal((await call(tokens.lead1, 'POST', `/api/jobs/${id}/start`, {})).status, 200);
+  assert.equal((await call(tokens.cae1, 'GET', `/api/jobs/${id}`)).json.status, 'pending');
+  // аудитор / ахлах аудитор эхлүүлэх эрхгүй
+  assert.equal((await call(tokens.lead1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 403);
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 404);
+  assert.equal((await call(tokens.cae1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 200);
+  assert.equal((await call(tokens.cae1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 409, 'давхар эхлүүлсэн');
+  // AI ажиллаж / дараалалд байх зуур өөр (дууссан) тайлангийн саналыг шийдвэрлэнэ
+  const d = await call(tokens.cae1, 'PATCH', `/api/jobs/${C}/decisions/RV-T-C1-001`, { decision: 'REJECTED' });
+  assert.equal(d.status, 200, String(d.buf));
+  // claude олдохгүй тул failed болно → захирал дахин эхлүүлнэ (эх файлыг originals/-аас сэргээнэ)
+  let st; for (let i = 0; i < 100; i++) { st = (await call(tokens.cae1, 'GET', `/api/jobs/${id}`)).json.status; if (['failed', 'done'].includes(st)) break; await new Promise(r => setTimeout(r, 200)); }
+  assert.equal(st, 'failed');
+  assert.equal((await call(tokens.cae1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 200, 'дахин эхлүүлж чадсангүй');
 });

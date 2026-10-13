@@ -1085,7 +1085,7 @@ mark[data-issue] { cursor: pointer; }
 
 <script>
 const ALLOWED = ['.docx','.pdf','.xlsx','.xlsm','.csv','.txt','.md','.png','.jpg','.jpeg'];
-const STATUS_MN = { draft: 'Ноорог', queued: 'Дараалалд', extracting: 'Бэлтгэж байна', running: 'Хянаж байна', done: 'Дууссан', failed: 'Амжилтгүй', cancelled: 'Цуцалсан' };
+const STATUS_MN = { draft: 'Ноорог', pending: 'AI хянуулахыг хүлээж буй', queued: 'Дараалалд', extracting: 'Бэлтгэж байна', running: 'Хянаж байна', done: 'Дууссан', failed: 'Амжилтгүй', cancelled: 'Цуцалсан' };
 const ACTIVE = ['queued', 'extracting', 'running'];
 const SEVS = ['R1', 'R2', 'R3', 'R4'];
 const SEV_ORDER = { R1: 0, R2: 1, R3: 2, R4: 3 };
@@ -1624,9 +1624,9 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-go]'
 /* ---------- list ---------- */
 // Жагсаалтын шүүлтүүр (client-side)
 // Процесс (ажиллагаа) ба шийдвэр (агентын санал / захирлын батлалт) — хоёр тусдаа ойлголт
-const PROC = { draft: ['Хүлээгдэж буй', ''], queued: ['Хүлээгдэж буй', ''], extracting: ['Явагдаж буй', 'run'], running: ['Явагдаж буй', 'run'], done: ['Шалгалт дууссан', 'done'], failed: ['Алдаатай', 'err'], cancelled: ['Цуцалсан', ''] };
+const PROC = { draft: ['Хүлээгдэж буй', ''], pending: ['AI хянуулахыг хүлээж буй', ''], queued: ['Хүлээгдэж буй', ''], extracting: ['Явагдаж буй', 'run'], running: ['Явагдаж буй', 'run'], done: ['Шалгалт дууссан', 'done'], failed: ['Алдаатай', 'err'], cancelled: ['Цуцалсан', ''] };
 const PROC_ICON = { '': '○', run: '◔', done: '●', err: '✕' };
-const LIST_FILTERS = [['all', 'Бүгд', () => true], ['pending', 'Хяналт хүлээж буй', j => j.workflow?.state === 'CAE_REVIEW'], ['returned', 'Засварт буцаасан', j => j.workflow?.state === 'RETURNED'], ['wait', 'Хүлээгдэж буй', j => ['draft', 'queued', 'cancelled'].includes(j.status)], ['active', 'Явагдаж буй', j => ['extracting', 'running'].includes(j.status)], ['done', 'Шалгалт дууссан', j => j.status === 'done'], ['bad', 'Алдаатай', j => j.status === 'failed']];
+const LIST_FILTERS = [['all', 'Бүгд', () => true], ['pending', 'Хяналт хүлээж буй', j => j.workflow?.state === 'CAE_REVIEW'], ['returned', 'Засварт буцаасан', j => j.workflow?.state === 'RETURNED'], ['wait', 'Хүлээгдэж буй', j => ['draft', 'pending', 'queued', 'cancelled'].includes(j.status)], ['active', 'Явагдаж буй', j => ['extracting', 'running'].includes(j.status)], ['done', 'Шалгалт дууссан', j => j.status === 'done'], ['bad', 'Алдаатай', j => j.status === 'failed']];
 // Шийдвэр: fix (улаан) / minor (шар) / ready (ногоон) / final (ногоон ✔) / null
 const DEC_UI = { fix: ['✕', 'Засвар шаардлагатай'], minor: ['!', 'Бага засвартай'], ready: ['✓', 'Батлахад бэлэн'], final: ['✔', 'Батлагдсан'], esc: ['⚠', 'Эскалаци шаардлагатай'], na: ['–', 'Шалгах боломжгүй'] };
 const SEV_LONG = { R1: 'Ноцтой', R2: 'Томоохон', R3: 'Бага', R4: 'Санал' };
@@ -1712,15 +1712,19 @@ async function deleteReport(id, j) {
 // Жагсаалт — ажлын урсгалаар: аудит бүр нэг мөр (хувилбарууд нь дотроо). «Таны ээлж» = хэрэглэгчээс хүлээгдэж буй үйлдэл.
 const WF_NEXT = {
   DRAFT: 'Илгээгээгүй ноорог', SUBMITTED: 'AI шалгаж байна → дараа нь захирал хянана', RESUBMITTED: 'AI засварыг шалгаж байна → дараа нь захирал хянана',
+  AWAIT_AI: 'Захирал «AI хянуулах» дарахыг хүлээж байна', AI_FAILED: 'AI хяналт тасарсан — захирал дахин хянуулна',
   CAE_REVIEW: 'Захирал хянаж, санал буцаана эсвэл батална', RETURNED: 'Аудитор засаад дахин илгээнэ', APPROVED_FINAL: 'Дууссан', CANCELLED: 'Цуцлагдсан',
 };
 const wfOf = g => g.latest.workflow || { state: g.finalized ? 'APPROVED_FINAL' : 'CAE_REVIEW', label: g.finalized ? 'Эцэслэн батлагдсан' : '—', version: g.versions.length };
 // Хэрэглэгчийн ээлж: захирал/хянагч — CAE_REVIEW; аудитор — RETURNED
-const myTurn = g => { const s = wfOf(g).state; return canDo('job.release') || canDo('issue.decide') ? s === 'CAE_REVIEW' : s === 'RETURNED'; };
-const aiBusy = g => ['SUBMITTED', 'RESUBMITTED'].includes(wfOf(g).state);
+// Илгээгдсэн ч AI эхлээгүй (эсвэл тасарсан) — захирал «AI хянуулах» дарна
+const needsAI = g => ['SUBMITTED', 'RESUBMITTED'].includes(wfOf(g).state) && ['pending', 'failed', 'cancelled'].includes(g.latest.status);
+const myTurn = g => { const s = wfOf(g).state; return canDo('job.release') || canDo('issue.decide') ? s === 'CAE_REVIEW' || (canDo('job.runAI') && needsAI(g)) : s === 'RETURNED'; };
+const aiBusy = g => ['SUBMITTED', 'RESUBMITTED'].includes(wfOf(g).state) && ACTIVE.includes(g.latest.status);
+const nextStep = (g, w) => needsAI(g) ? WF_NEXT[g.latest.status === 'pending' ? 'AWAIT_AI' : 'AI_FAILED'] : (WF_NEXT[w.state] || '');
 let listView = 'all', listMore = false;
 const LIST_VIEWS = [
-  ['all', 'Бүгд', () => true], ['mine', 'Таны ээлж', myTurn], ['ai', 'AI шалгаж байна', aiBusy],
+  ['all', 'Бүгд', () => true], ['mine', 'Таны ээлж', myTurn], ['await', 'AI хянуулах хүлээж буй', needsAI], ['ai', 'AI шалгаж байна', aiBusy],
   ['returned', 'Аудиторт буцаасан', g => wfOf(g).state === 'RETURNED'], ['final', 'Батлагдсан', g => wfOf(g).state === 'APPROVED_FINAL'],
 ];
 function renderKpis(groups) {
@@ -1728,7 +1732,7 @@ function renderKpis(groups) {
   const turnLabel = canDo('job.release') || canDo('issue.decide') ? 'Таны хяналт хүлээж буй' : 'Танд засвар буцаасан';
   const card = (k, n, l, cls) => `<button class="card kpi kbtn ${cls || ''} ${listView === k ? 'on' : ''}" data-lv="${k}" aria-pressed="${listView === k}"><b>${n}</b><span>${l}</span></button>`;
   const n = k => groups.filter((LIST_VIEWS.find(v => v[0] === k) || LIST_VIEWS[0])[2]).length;
-  $('#jobKpis').innerHTML = card('mine', n('mine'), turnLabel, n('mine') ? 'turn' : '') + card('ai', n('ai'), 'AI шалгаж байна') + card('returned', n('returned'), 'Аудиторт буцаасан, засвар хүлээж буй') + card('final', n('final'), 'Эцэслэн батлагдсан');
+  $('#jobKpis').innerHTML = card('mine', n('mine'), turnLabel, n('mine') ? 'turn' : '') + (canDo('job.runAI') ? card('await', n('await'), 'AI хянуулахыг хүлээж буй') : '') + card('ai', n('ai'), 'AI шалгаж байна') + card('returned', n('returned'), 'Аудиторт буцаасан, засвар хүлээж буй') + card('final', n('final'), 'Эцэслэн батлагдсан');
   $$('#jobKpis [data-lv]').forEach(b => b.onclick = () => { listView = listView === b.dataset.lv ? 'all' : b.dataset.lv; renderJobList(); });
 }
 // «Ноцтой 18 · Томоохон 13 · Бага 7» — тоог үгтэй нь
@@ -1786,9 +1790,9 @@ function renderJobList() {
         <div style="min-width:0" role="cell"><div class="t clamp" title="${esc(title)}">${esc(title)}</div>
           <div class="m">${a.code ? `<span class="code">${esc(normTitle(a.code))}</span>` : ''}${a.branch ? `<span>${esc(normTitle(a.branch))}</span>` : ''}<span>v${esc(w.version || g.versions.length)}</span><span title="${esc(fmtDate(j.created))}">${esc(relTime(j.created))}</span>${who(j) ? `<span>${esc(who(j))}</span>` : ''}
             ${multi ? `<button class="vtoggle" data-vg="${esc(g.key)}" aria-expanded="${open}">${g.versions.length} хувилбар ${open ? '▴' : '▾'}</button>` : ''}</div></div>
-        <div role="cell"><span class="wfst ${esc(w.state)}">${esc(wfLabel(w, j.restricted))}${fin}</span>${myTurn(g) ? ' <span class="turnb">Таны ээлж</span>' : ''}<div class="nextstep">${esc(j.restricted && ['SUBMITTED', 'CAE_REVIEW', 'RESUBMITTED'].includes(w.state) ? 'Захирлын хариуг хүлээж байна' : (WF_NEXT[w.state] || ''))}</div></div>
+        <div role="cell"><span class="wfst ${esc(w.state)}">${esc(wfLabel(w, j.restricted))}${fin}</span>${myTurn(g) ? ' <span class="turnb">Таны ээлж</span>' : ''}<div class="nextstep">${esc(j.restricted && ['SUBMITTED', 'CAE_REVIEW', 'RESUBMITTED'].includes(w.state) ? 'Захирлын хариуг хүлээж байна' : nextStep(g, w))}</div></div>
         <div role="cell">${notesText(j)}${trend ? `<div class="sub" style="font-size:11px;margin-top:2px">${trend}</div>` : ''}</div>
-        <div role="cell" class="acts acts-col"><button class="btn sm ${myTurn(g) ? 'primary' : ''}" data-open="${j.id}">${myTurn(g) ? (w.state === 'RETURNED' ? 'Засвар оруулах' : 'Хянах') : 'Нээх'}</button>${canDel(j) && !g.versions.some(v => ACTIVE.includes(v.status)) ? `<button class="btn sm ghost delx" data-del="${esc(j.id)}" title="Тайланг (бүх хувилбар) устгах" aria-label="Устгах">🗑</button>` : ''}</div>
+        <div role="cell" class="acts acts-col"><button class="btn sm ${myTurn(g) ? 'primary' : ''}" data-open="${j.id}">${myTurn(g) ? (w.state === 'RETURNED' ? 'Засвар оруулах' : 'Хянах') : 'Нээх'}</button>${canDo('job.runAI') && needsAI(g) && !j.restricted ? `<button class="btn sm" data-ai="${esc(j.id)}" title="Энэ тайланг AI-аар шалгуулж эхлүүлнэ">${j.status === 'pending' ? '🤖 AI хянуулах' : '↻ AI дахин'}</button>` : ''}${canDel(j) && !g.versions.some(v => ACTIVE.includes(v.status)) ? `<button class="btn sm ghost delx" data-del="${esc(j.id)}" title="Тайланг (бүх хувилбар) устгах" aria-label="Устгах">🗑</button>` : ''}</div>
       </div>`;
       if (multi && open) html += g.versions.slice().reverse().map((v, i) => `<div class="jrow job ver" role="row" tabindex="0" data-id="${v.id}">
         <div role="cell" style="min-width:0"><div class="t">v${g.versions.length - i} · ${v.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'}</div><div class="m" style="padding-left:18px"><span title="${esc(fmtDate(v.created))}">${esc(relTime(v.created))}</span>${who(v) ? `<span>${esc(who(v))}</span>` : ''}</div></div>
@@ -1803,8 +1807,11 @@ function renderJobList() {
   $$('#jobList [data-open]').forEach(b => b.onclick = e => { e.stopPropagation(); go('#job/' + b.dataset.open); });
   $$('#jobList [data-vg]').forEach(b => b.onclick = e => { e.stopPropagation(); const k = b.dataset.vg; openGroups.has(k) ? openGroups.delete(k) : openGroups.add(k); renderJobList(); });
   $$('#jobList [data-go]').forEach(b => b.onclick = () => go('#' + b.dataset.go));
-  $$('#jobList [data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteReport(b.dataset.del, listJobs.find(x => x.id === b.dataset.del)); });
+  $('#jobList [data-ai]').forEach(b => b.onclick = async e => { e.stopPropagation(); b.disabled = true; try { await startAI(b.dataset.ai); await loadJobs(); } catch (er) { b.disabled = false; if (er.message !== 'unauthorized') alert('AI хяналт эхлүүлж чадсангүй: ' + er.message); } });
+  $('#jobList [data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteReport(b.dataset.del, listJobs.find(x => x.id === b.dataset.del)); });
 }
+// Захирал «AI хянуулах» — дараалалд оруулна (нэг удаад нэг тайлан шалгагдана; бусад тайлангийн саналыг зэрэг шийдвэрлэж болно)
+const startAI = id => api(`/api/jobs/${id}/ai-review`, { method: 'POST' });
 // Экспорт татах (жагсаалт, review хуудас хуваалцана)
 async function downloadExport(id, fmt) {
   const r = await fetch(`/api/jobs/${id}/export/${fmt}`, { headers: authHeaders(), cache: 'no-store', credentials: 'omit' });
@@ -2242,6 +2249,7 @@ function renderJob() {
   if (j.finalized) { const f = j.finalized; html += `<div class="fin-banner">✔ Эцэслэн батлагдсан · <b>${esc(f.reg_no)}</b> · ${esc(fmtDate(f.approved_at))} · ${esc(f.approver_name || f.approved_by)} · C${esc(f.final_cycle)} хяналтаар · архивт хадгалагдсан (10 жил)</div>`; }
   if (j.cycle_warning && j.status === 'done' && !j.workflow) html += `<div class="cyc-warn">⚠ 3-аас олон удаа засварлагдлаа — Аудитын менежертэй уулзах (QAIP тренд)</div>`;
   if (active) html += renderProgress(j);
+  else if (j.status === 'pending') html += `<div class="card pad" style="margin-bottom:12px"><b>AI хяналт эхлээгүй байна.</b> <span class="sub">Хянуулах хүсэлт ирсэн${j.can?.runAI ? ' — дээрх «🤖 AI хянуулах» товчийг дарж шалгуулна. Энэ хооронд бусад тайлангийн саналыг шийдвэрлэж болно.' : ' — захирал AI хяналтыг эхлүүлнэ.'}</span></div>`;
   else if (j.status === 'failed' || j.status === 'cancelled') html += `<div class="err">${esc(j.error || STATUS_MN[j.status])}</div>${renderLog(j, true)}`;
   else if (j.status === 'done') html += rechecksStrip(j) + (j.parent_id ? renderRecheck(j) : renderResult(j));
   html += privacyNotice(j, files);
@@ -2644,6 +2652,9 @@ function workflowBar(j, finalHtml) {
   const c = j.can || {};
   const btn = [];
   if (w.state === 'CAE_REVIEW' && c.release) btn.push(`<button class="btn sm primary" data-wf="release" title="Шийдвэрлэсэн саналуудыг аудиторт илгээнэ">Батлаад илгээх (аудиторт буцаах)</button>`);
+  const isLatest = !w.latest || w.latest === current.id;
+  if (['SUBMITTED', 'RESUBMITTED'].includes(w.state) && c.runAI && isLatest && ['pending', 'failed', 'cancelled'].includes(j.status))
+    btn.push(`<button class="btn sm primary" data-wf="ai" title="Энэ тайланг AI-аар шалгуулна. Дуусахыг хүлээх хооронд бусад тайланг хянаж болно">${j.status === 'pending' ? '🤖 AI хянуулах' : '↻ AI дахин хянуулах'}</button>`);
   if (finalHtml) btn.push(finalHtml);
   if (w.state === 'APPROVED_FINAL' && c.downloadFinal) btn.push(`<details class="dlmenu"><summary class="btn sm primary">⬇ Эцсийн тайлан ▾</summary><div class="dlmenu-list">
       <button class="dl" data-final="docx"><b>Тайлан (.docx)</b><span>Аудиторын сүүлийн хувилбар, эх хэлбэрээр</span></button>
@@ -2661,7 +2672,8 @@ function workflowBar(j, finalHtml) {
   btn.push(`<button class="btn sm ghost" data-wf="timeline">${current.wfOpen ? 'Хувилбарын түүх ▴' : 'Хувилбарын түүх ▾'}</button>`);
   const next = { CAE_REVIEW: c.release ? 'Саналуудыг шийдвэрлээд аудиторт илгээнэ эсвэл эцэслэн батална.' : 'Захирлын шийдвэр хүлээгдэж байна.', RETURNED: 'Аудиторын засвар хүлээгдэж байна.',
     SUBMITTED: 'AI шалгаж байна.', RESUBMITTED: 'AI засварыг шалгаж байна.' }[w.state] || '';
-  let html = `<div class="wfbar">${wfBadge(w)}<span class="sub">${esc(next)}</span>${(j.team || []).length ? `<span class="sub">· Баг: ${(j.team || []).map(esc).join(', ')}</span>` : ''}<span class="spacer"></span>${btn.join('')}</div>`;
+  const next2 = ['SUBMITTED', 'RESUBMITTED'].includes(w.state) && j.status === 'pending' ? 'Хянуулах хүсэлт ирсэн — AI хяналт эхлээгүй.' : ['SUBMITTED', 'RESUBMITTED'].includes(w.state) && ['failed', 'cancelled'].includes(j.status) ? 'AI хяналт тасарсан.' : next;
+  let html = `<div class="wfbar">${wfBadge(w)}<span class="sub">${esc(next2)}</span>${(j.team || []).length ? `<span class="sub">· Баг: ${(j.team || []).map(esc).join(', ')}</span>` : ''}<span class="spacer"></span>${btn.join('')}</div>`;
   if (j.cycle_warning) html += `<div class="cyc-warn">⚠ ${w.version} удаа засварлагдлаа (3-аас олон) — Аудитын менежертэй уулзах (QAIP тренд)</div>`;
   if (current.wfOpen) { wfLoad(); html += `<div class="card pad" style="margin-bottom:12px">${timelineHtml()}</div>`; }
   return html;
@@ -2678,6 +2690,11 @@ function bindWf() {
         box.innerHTML = `<div class="sub" style="margin:8px 0">v${d.from} → v${d.to}: <b>${d.added}</b> догол мөр нэмэгдсэн/өөрчлөгдсөн, <b>${d.removed}</b> хасагдсан/өөрчлөгдсөн</div>
           <div class="dfl card pad" style="max-height:480px;overflow:auto">${d.ops.map(o => o.op === 'same' ? `<div class="same">⋯ ${o.n} догол мөр өөрчлөгдөөгүй</div>` : `<div class="${o.op}">${esc(o.text)}</div>`).join('')}</div>`;
       } catch (e) { box.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+      return;
+    }
+    if (act === 'ai') {
+      b.disabled = true;
+      try { await startAI(id); await refreshJob(id); } catch (e) { b.disabled = false; if (e.message !== 'unauthorized') alert('AI хяналт эхлүүлж чадсангүй: ' + e.message); }
       return;
     }
     if (act === 'cancel') {
