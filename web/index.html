@@ -152,6 +152,10 @@ a { color: var(--accent); }
 .fbi.done { border-left-color: var(--ok); background: var(--ok-bg); }
 .fbi.done > div:first-child b { color: var(--ok); }
 .fbck { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted); cursor: pointer; }
+.fbtick { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface); color: #fff; font-size: 13px; font-weight: 800; line-height: 1; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.fbtick:hover:not(:disabled) { border-color: var(--ok); }
+.fbtick.on { background: var(--ok); border-color: var(--ok); }
+.fbtick:disabled { cursor: default; }
 .fbck.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 .fbck:disabled { cursor: default; opacity: .85; }
 .fbprog { margin-top: 10px; }
@@ -2613,6 +2617,10 @@ function fbProgressHtml(fb) {
   return `<div class="fbprog"><div class="lbl"><b>${pct}%</b><span>${done} / ${total} санал зассан</span>${r1 ? `<span class="st bad">Ноцтой ${r1} үлдсэн</span>` : ''}<span class="sub">${msg}</span></div>
     <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div></div>`;
 }
+// Хураасан мөрөн дээрх жижиг дугуй тэмдэг (дэлгэхгүйгээр тэмдэглэнэ)
+function fbTick(x, can) {
+  return `<button class="fbtick${x._done ? ' on' : ''}" ${can ? `data-fbdone="${esc(x.id)}"` : 'disabled'} aria-pressed="${x._done}" aria-label="Зассан" title="${can ? (x._done ? 'Зассан — дарвал буцаана' : 'Зассан гэж тэмдэглэх') : (x._done ? 'Зассан' : 'Засвар илгээсэн — өөрчлөхгүй')}">${x._done ? '✓' : ''}</button>`;
+}
 function fbCheckBtn(x, can) {
   return `<button class="fbck${x._done ? ' on' : ''}" ${can ? `data-fbdone="${esc(x.id)}"` : 'disabled'} title="${can ? (x._done ? 'Дарвал «засаагүй» болгоно' : 'Энэ саналыг зассан бол дарна') : 'Засвар илгээсэн — өөрчлөхгүй'}">${x._done ? '✓ Зассан' : '○ Зассан гэж тэмдэглэх'}</button>`;
 }
@@ -2773,7 +2781,7 @@ function bindWf() {
     b.disabled = true;
     try {
       const r = await api(`/api/jobs/${current.id}/feedback/${fb.version}/progress/${encodeURIComponent(iid)}`, { method: 'PATCH', body: JSON.stringify({ done }) });
-      fb.progress = r.progress || {}; openIds.add(iid); renderJob();
+      fb.progress = r.progress || {}; if (b.closest('details.cmt')?.open) openIds.add(iid); else openIds.delete(iid); renderJob();
     } catch (err) { b.disabled = false; if (err.message !== 'unauthorized') alert('Хадгалж чадсангүй: ' + err.message); }
   });
   $$('[data-final]').forEach(b => b.onclick = async () => {
@@ -3327,9 +3335,8 @@ function commentHtml(x) {
   const mod = moduleOf(x);
   const imps = (Array.isArray(x.impacts) ? x.impacts : []).filter(i => i && (i.element || i.action));
   return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' || x._done ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
-    <summary class="cmt-s"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${x._fb && x._done ? '<span class="obadge" style="background:var(--ok);color:#fff">✓ Зассан</span>' : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
+    <summary class="cmt-s">${x._fb ? fbTick(x, x._fbCan) : ''}<span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
     <div class="cmt-b">
-      ${x._fb ? `<div style="margin-bottom:6px">${fbCheckBtn(x, x._fbCan)}</div>` : ''}
       ${qcHtml(x)}
       ${where || ev.length ? `<div class="locs">${where}${ev.map(e => linkHtml(e)).filter(Boolean).join('')}</div>` : ''}
       ${x.location && !x.anchor ? `<div class="loc">📍 ${esc(x.location)}</div>` : ''}
