@@ -134,6 +134,24 @@ test('2. 7 APPROVED + 3 REJECTED → аудитор яг 7-г харна; 3b. re
   assert.equal((await call(tokens.cae1, 'POST', `/api/jobs/${A}/release`, {})).status, 409);
 });
 
+test('2b. Аудитор засварыг «Зассан» гэж тэмдэглэнэ; захирал харна, өөрчлөхгүй; feedback царцсан хэвээр', async () => {
+  const base = `/api/jobs/${A}/feedback/1/progress`;
+  const before = fs.readFileSync(path.join(DIRS.jobs, A, 'feedback', 'feedback_v1.json'), 'utf8');
+  let r = await call(tokens.lead1, 'PATCH', `${base}/RV-T-C1-001`, { done: true });
+  assert.equal(r.status, 200, String(r.buf));
+  r = await call(tokens.aud1, 'PATCH', `${base}/RV-T-C1-002`, { done: true });
+  assert.equal(r.status, 200, String(r.buf));
+  assert.deepEqual(Object.keys(r.json.progress).sort(), ['RV-T-C1-001', 'RV-T-C1-002']);
+  r = await call(tokens.aud1, 'PATCH', `${base}/RV-T-C1-002`, { done: false });
+  assert.deepEqual(Object.keys(r.json.progress), ['RV-T-C1-001']);
+  assert.equal((await call(tokens.aud1, 'PATCH', `${base}/RV-T-C1-009`, { done: true })).status, 404);   // аудиторт очоогүй санал
+  assert.equal((await call(tokens.cae1, 'PATCH', `${base}/RV-T-C1-003`, { done: true })).status, 403);   // багийн бус захирал
+  const g = await call(tokens.cae1, 'GET', base);
+  assert.equal(g.status, 200);
+  assert.ok(g.json.progress['RV-T-C1-001'].done);
+  assert.equal(fs.readFileSync(path.join(DIRS.jobs, A, 'feedback', 'feedback_v1.json'), 'utf8'), before);
+});
+
 test('5. Засаад дахин оруулахад v2 үүсч, v1-ийн эх файл sha256-аараа өөрчлөгдөөгүй', async () => {
   const c = await call(tokens.aud1, 'POST', '/api/jobs', { parent_id: A });
   assert.ok([200, 201].includes(c.status), String(c.buf));
@@ -151,6 +169,9 @@ test('5. Засаад дахин оруулахад v2 үүсч, v1-ийн эх 
   // захиралд мэдэгдэл
   const n = await call(tokens.cae1, 'GET', '/api/notifications');
   assert.ok(n.json.items.some(x => x.kind === 'RESUBMITTED'));
+  // засвар илгээсний дараа «Зассан» тэмдэглэгээ түгжигдэнэ, үзэх боломжтой хэвээр
+  assert.equal((await call(tokens.aud1, 'PATCH', `/api/jobs/${A}/feedback/1/progress/RV-T-C1-003`, { done: true })).status, 409);
+  assert.ok((await call(tokens.aud1, 'GET', `/api/jobs/${A}/feedback/1/progress`)).json.progress['RV-T-C1-001']);
 });
 
 test('6. Линкээр илгээсэн бол тухайн агшны хуулбар (url, огноо, sha256) хадгалагдана', () => {

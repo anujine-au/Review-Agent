@@ -149,6 +149,16 @@ a { color: var(--accent); }
 .vtl .v .vm { font-size: 12px; color: var(--muted); }
 .fbi { border: 1px solid var(--border); border-left: 4px solid var(--minor); border-radius: 8px; padding: 10px 12px; background: var(--surface); display: grid; gap: 6px; }
 .fbi.R1 { border-left-color: var(--crit); } .fbi.R2 { border-left-color: var(--major); } .fbi.R4 { border-left-color: var(--sug); }
+.fbi.done { border-left-color: var(--ok); background: var(--ok-bg); }
+.fbi.done > div:first-child b { color: var(--ok); }
+.fbck { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted); cursor: pointer; }
+.fbck.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.fbck:disabled { cursor: default; opacity: .85; }
+.fbprog { margin-top: 10px; }
+.fbprog .bar { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.fbprog .bar i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+.fbprog .lbl { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+.fbprog .lbl b { font-size: 18px; color: var(--ok); }
 .fbi q { display: block; font-size: 13px; color: var(--muted); border-left: 2px solid var(--border-strong); padding-left: 8px; }
 .dfl .add { background: #e7f6ec; border-left: 3px solid #2e8b57; padding: 4px 8px; margin: 2px 0; font-size: 13px; }
 .dfl .del { background: #fbeaea; border-left: 3px solid var(--crit); padding: 4px 8px; margin: 2px 0; font-size: 13px; text-decoration: line-through; color: var(--muted); }
@@ -2530,7 +2540,10 @@ function wfLoad(force) {
   api(`/api/jobs/${id}/versions`).then(async v => {
     const rel = (current.job?.workflow?.released || []);
     const fb = {};
-    for (const n of rel) { try { fb[n] = await api(`/api/jobs/${id}/feedback/${n}`); } catch (e) { /* эрхгүй */ } }
+    for (const n of rel) {
+      try { fb[n] = await api(`/api/jobs/${id}/feedback/${n}`); } catch (e) { continue; /* эрхгүй */ }
+      try { fb[n].progress = (await api(`/api/jobs/${id}/feedback/${n}/progress`)).progress || {}; } catch (e) { fb[n].progress = {}; }
+    }
     if (current.id !== id) return;
     current.wf = { id, versions: v.versions || [], wf: v.workflow, fb, fbSel: rel.length ? rel[rel.length - 1] : null };
     renderJob();
@@ -2572,7 +2585,7 @@ function timelineHtml() {
   const anyFiles = d.versions.some(v => (v.files || []).some(f => !f.pending));
   return `${anyFiles ? '<div style="margin-bottom:8px"><button class="btn sm" data-ozip>⬇ Бүх хувилбарын эх файл (ZIP: v1/, v2/ …)</button></div>' : ''}<div class="vtl">${d.versions.slice().reverse().map(v => `<div class="v"><b class="vn">v${v.version}</b><div>
       <div><b>${v.version === 1 ? 'Анхны илгээлт' : 'Засварласан хувилбар'}</b> <span class="vm">· ${esc(fmtDate(v.submitted_at || v.created))} · ${esc(String(v.submitted_by || '').replace(/^name:/, ''))}</span>
-        ${v.released ? `<span class="wfst RETURNED" style="margin-left:6px">Feedback илгээсэн</span> <button class="btn sm ghost" data-fbdl="docx" data-fbn="${v.version}">⬇ Word</button><button class="btn sm ghost" data-fbdl="xlsx" data-fbn="${v.version}">⬇ Excel</button>` : ''}
+        ${v.released ? `<span class="wfst RETURNED" style="margin-left:6px">Feedback илгээсэн</span> <button class="btn sm ghost" data-fbdl="docx" data-fbn="${v.version}">⬇ Word</button><button class="btn sm ghost" data-fbdl="xlsx" data-fbn="${v.version}">⬇ Excel</button>${d.fb?.[v.version]?.items?.length ? (p => ` <span class="vm" title="Аудиторын өөрийн тэмдэглэгээ — засагдсан эсэхийг дахин хяналт шалгана">· аудитор ${p.done}/${p.total} (${p.pct}%) зассан гэж тэмдэглэсэн</span>`)(fbProgress(d.fb[v.version])) : ''}` : ''}
         ${internal && v.verdict ? `<span class="vm"> · ${esc(VERDICT_MN[v.verdict] || v.verdict)} · Ноцтой ${v.r1 ?? 0}</span>` : ''}
         ${internal && v.job !== current.id ? ` <a href="#job/${esc(v.job)}" class="vm">нээх</a>` : ''}</div>
       ${v.note ? `<div class="vm" style="margin-top:4px"><b>Юу зассан:</b> ${esc(v.note)}</div>` : ''}
@@ -2582,7 +2595,27 @@ function timelineHtml() {
     ${internal && d.versions.length > 1 ? `<div style="margin-top:8px"><button class="btn sm" data-wf="diff">Сүүлийн 2 хувилбарын ялгаа (v${d.versions.length - 1} → v${d.versions.length})</button></div><div id="diffBox"></div>` : ''}`;
 }
 // Аудиторт илгээгдсэн feedback (царцсан) — тайлангийн тэмдэглэлийн загвараар
-let fbView = 'doc';
+let fbView = 'doc', fbDoneFilter = 'ALL';
+// Аудиторын «Зассан» тэмдэглэгээ: зөвхөн сүүлийн feedback, төлөв RETURNED, аудиторын хуудас дээр өөрчилнө
+function fbCanMark(fb) {
+  const rel = Object.keys(current.wf?.fb || {}).map(Number);
+  return !!current.job?.restricted && current.job?.workflow?.state === 'RETURNED' && fb.version === Math.max(...rel);
+}
+function fbProgress(fb) {
+  const pr = fb.progress || {}, total = fb.items.length, done = fb.items.filter(x => pr[x.id]?.done).length;
+  return { pr, total, done, pct: total ? Math.round(done * 100 / total) : 0, r1: fb.items.filter(x => sevOf(x.severity, 3) === 'R1' && !pr[x.id]?.done).length };
+}
+function fbProgressHtml(fb) {
+  const { total, done, pct, r1 } = fbProgress(fb);
+  if (!total) return '';
+  const msg = pct === 100 ? '🎉 Бүх саналыг зассан байна! Одоо «Засвар оруулах» дарж илгээнэ үү.'
+    : pct >= 50 ? 'Хагасаас илүүг нь зассан — бага үлдлээ 💪' : done ? 'Сайн эхэллээ — үргэлжлүүлээрэй.' : 'Зассан саналаа «Зассан» гэж тэмдэглээрэй — явц энд харагдана.';
+  return `<div class="fbprog"><div class="lbl"><b>${pct}%</b><span>${done} / ${total} санал зассан</span>${r1 ? `<span class="st bad">Ноцтой ${r1} үлдсэн</span>` : ''}<span class="sub">${msg}</span></div>
+    <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div></div>`;
+}
+function fbCheckBtn(x, can) {
+  return `<button class="fbck${x._done ? ' on' : ''}" ${can ? `data-fbdone="${esc(x.id)}"` : 'disabled'} title="${can ? (x._done ? 'Дарвал «засаагүй» болгоно' : 'Энэ саналыг зассан бол дарна') : 'Засвар илгээсэн — өөрчлөхгүй'}">${x._done ? '✓ Зассан' : '○ Зассан гэж тэмдэглэх'}</button>`;
+}
 function feedbackHtml() {
   const d = current.wf;
   if (!d || !d.fbSel || !d.fb[d.fbSel]) return '';
@@ -2593,35 +2626,41 @@ function feedbackHtml() {
     docs[fb.job] = null;
     apiText(`/api/jobs/${fb.job}/document`).then(t => { docs[fb.job] = JSON.parse(t); renderJob(); }).catch(() => { docs[fb.job] = false; renderJob(); });
   }
+  const can = fbCanMark(fb), { pr, done, total } = fbProgress(fb);
+  const items = fb.items.map(x => ({ ...x, _fb: true, _done: !!pr[x.id]?.done, _fbCan: can }))
+    .filter(x => fbDoneFilter === 'ALL' || (fbDoneFilter === 'DONE' ? x._done : !x._done));
+  const dchip = (k, l, n) => `<button class="fchip ${fbDoneFilter === k ? 'on' : ''}" data-fbdf="${k}">${l} <span class="k">${n}</span></button>`;
   const head = `<div class="card pad" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Захирлын буцаасан санал — v${fb.version}</h3>
       <span class="sub">${esc(fmtDate(fb.released_at))} · ${fb.items.length} санал</span><span class="spacer"></span>
       ${docs[fb.job] ? `<button class="fchip ${fbView === 'doc' ? 'on' : ''}" data-fbview="doc">Тайлан дээр</button><button class="fchip ${fbView === 'list' ? 'on' : ''}" data-fbview="list">Жагсаалтаар</button>` : ''}
       ${rel.length > 1 ? rel.map(n => `<button class="fchip ${n === d.fbSel ? 'on' : ''}" data-fbv="${n}">v${n}</button>`).join('') : ''}
       <button class="btn sm" data-fbdl="docx" data-fbn="${fb.version}" title="Засах зүйлсийн жагсаалт (Word)">⬇ Word</button><button class="btn sm" data-fbdl="xlsx" data-fbn="${fb.version}" title="Засах зүйлс, хариу бөглөх баганатай (Excel)">⬇ Excel</button></div>
-      <div class="sub" style="margin-top:6px">Санал бүрийн «Юу засах вэ»-г харж, засвараа <b>өөрийн эх тайланд</b> хийгээд «Засвар оруулах» дарна.</div></div>`;
+      <div class="sub" style="margin-top:6px">Санал бүрийн «Юу засах вэ»-г харж, засвараа <b>өөрийн эх тайланд</b> хийгээд «Зассан» гэж тэмдэглэнэ. Бүгдийг засаад «Засвар оруулах» дарна.</div>
+      ${fbProgressHtml(fb)}
+      ${total ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${dchip('ALL', 'Бүгд', total)}${dchip('TODO', 'Засаагүй', total - done)}${dchip('DONE', 'Зассан', done)}</div>` : ''}</div>`;
   if (docs[fb.job] && fbView === 'doc') {
     const saved = current.doc;
     current.doc = docs[fb.job];
-    const body = renderAnnotated({}, fb.items.map(x => ({ ...x, severity: sevOf(x.severity, 3) })));
+    const body = renderAnnotated({}, items.map(x => ({ ...x, severity: sevOf(x.severity, 3) })));
     current.doc = saved;
     return head + body;
   }
   if (docs[fb.job] === null) return head + '<div class="card empty">Тайланг ачаалж байна…</div>';
-  return head + feedbackListHtml(fb);
+  return head + feedbackListHtml({ ...fb, items });
 }
 function feedbackListHtml(fb) {
   const RCM = { NOT_RESOLVED: 'Засагдаагүй', PARTIAL: 'Хэсэгчлэн засагдсан', REGRESSED: 'Шинэ алдаа үүссэн', UNABLE: 'Шалгах боломжгүй' };
   return `<div class="card pad">
-    <div style="display:grid;gap:8px">${fb.items.map(x => `<div class="fbi ${esc(x.severity)}">
+    <div style="display:grid;gap:8px">${fb.items.map(x => `<div class="fbi ${esc(x.severity)}${x._done ? ' done' : ''}">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sev ${esc(x.severity)}">${esc(SEV_MN[x.severity] || x.severity)}</span><b>${esc(x.title)}</b>
-        ${x.recheck_status ? `<span class="wfst RETURNED">${esc(RCM[x.recheck_status] || x.recheck_status)}</span>` : ''}${x.edited ? '<span class="sub">(захирал зассан)</span>' : ''}</div>
+        ${x.recheck_status ? `<span class="wfst RETURNED">${esc(RCM[x.recheck_status] || x.recheck_status)}</span>` : ''}${x.edited ? '<span class="sub">(захирал зассан)</span>' : ''}${x._fb ? `<span class="spacer"></span>${fbCheckBtn(x, x._fbCan)}` : ''}</div>
       ${x.anchor ? `<div class="sub">Байршил: ${esc(x.anchor)}</div>` : ''}${x.quote ? `<q>${esc(x.quote)}</q>` : ''}
       ${x.issue ? `<div>${esc(x.issue)}</div>` : ''}
       ${x.recheck_note ? `<div class="sub"><b>Дахин шалгалт:</b> ${esc(x.recheck_note)}</div>` : ''}
       ${x.required_action ? `<div class="fix"><b>Юу засах вэ</b>${esc(x.required_action)}</div>` : ''}
       ${x.why_it_matters ? `<div class="sub"><b>Яагаад:</b> ${esc(x.why_it_matters)}</div>` : ''}
       <div class="cmt-meta">${esc(x.id)}${x.module ? ` · ${esc(x.module)} ${esc(MODULES[x.module] || '')}` : ''}${x.rule ? ` · ${esc(x.rule)}` : ''}${x.confidence ? ` · итгэл: ${esc(CONF_MN[x.confidence] || x.confidence)}` : ''}${x.source ? ` · ${esc(x.source)}` : ''}</div>
-    </div>`).join('') || '<div class="sub">Энэ хувилбарт засах санал байхгүй.</div>'}</div></div>`;
+    </div>`).join('') || (fbDoneFilter !== 'ALL' ? '<div class="sub">Энэ шүүлтүүрт санал алга.</div>' : '<div class="sub">Энэ хувилбарт засах санал байхгүй.</div>')}</div></div>`;
 }
 // Аудитор / ахлах аудитор: AI-ийн дотоод үр дүнгүй хуудас (§5)
 function renderRestricted() {
@@ -2726,6 +2765,17 @@ function bindWf() {
   });
   $$('[data-fbv]').forEach(b => b.onclick = () => { current.wf.fbSel = Number(b.dataset.fbv); renderJob(); });
   $$('[data-fbview]').forEach(b => b.onclick = () => { fbView = b.dataset.fbview; renderJob(); });
+  $$('[data-fbdf]').forEach(b => b.onclick = () => { fbDoneFilter = b.dataset.fbdf; renderJob(); });
+  $$('[data-fbdone]').forEach(b => b.onclick = async e => {
+    e.preventDefault(); e.stopPropagation();
+    const d = current.wf, fb = d?.fb?.[d.fbSel]; if (!fb) return;
+    const iid = b.dataset.fbdone, done = !fb.progress?.[iid]?.done;
+    b.disabled = true;
+    try {
+      const r = await api(`/api/jobs/${current.id}/feedback/${fb.version}/progress/${encodeURIComponent(iid)}`, { method: 'PATCH', body: JSON.stringify({ done }) });
+      fb.progress = r.progress || {}; openIds.add(iid); renderJob();
+    } catch (err) { b.disabled = false; if (err.message !== 'unauthorized') alert('Хадгалж чадсангүй: ' + err.message); }
+  });
   $$('[data-final]').forEach(b => b.onclick = async () => {
     b.disabled = true;
     try { await downloadBlob(`/api/jobs/${current.id}/final/${b.dataset.final}`, `final.${b.dataset.final}`); } catch (e) { if (e.message !== 'unauthorized') alert('Татаж чадсангүй: ' + e.message); }
@@ -3276,9 +3326,10 @@ function commentHtml(x) {
   const action = dv === 'EDITED' && decRaw.edited_text ? decRaw.edited_text : x.required_action;
   const mod = moduleOf(x);
   const imps = (Array.isArray(x.impacts) ? x.impacts : []).filter(i => i && (i.element || i.action));
-  return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
-    <summary class="cmt-s"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
+  return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' || x._done ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
+    <summary class="cmt-s"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${x._fb && x._done ? '<span class="obadge" style="background:var(--ok);color:#fff">✓ Зассан</span>' : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
     <div class="cmt-b">
+      ${x._fb ? `<div style="margin-bottom:6px">${fbCheckBtn(x, x._fbCan)}</div>` : ''}
       ${qcHtml(x)}
       ${where || ev.length ? `<div class="locs">${where}${ev.map(e => linkHtml(e)).filter(Boolean).join('')}</div>` : ''}
       ${x.location && !x.anchor ? `<div class="loc">📍 ${esc(x.location)}</div>` : ''}

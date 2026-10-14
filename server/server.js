@@ -982,6 +982,26 @@ async function handle(req, res) {
       log('FEEDBACK_VIEW', `${rootId} v${n}`);
       return send(res, 200, 'application/json; charset=utf-8', C.restoreTokens(jobDir(rootId), fs.readFileSync(path.join(jobDir(rootId), 'feedback', `feedback_v${n}.json`), 'utf8'), true));
     }
+    // Аудиторын «Зассан» тэмдэглэгээ (feedback бүрийн мөрөөр). Feedback өөрөө царцсан хэвээр — тусдаа progress_v{n}.json.
+    // Энэ нь аудиторын өөрийн тэмдэглэл; засагдсан эсэхийг дахин хяналт (M14) бие даан шалгана.
+    const fpm = rest.match(/^\/feedback\/(\d{1,3})\/progress(?:\/([A-Za-z0-9_-]{1,40}))?$/);
+    if (fpm && ((m === 'GET' && !fpm[2]) || (m === 'PATCH' && fpm[2]))) {
+      const n = Number(fpm[1]), rel = WF.releasedVersions(rootId);
+      if (!rel.includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
+      const pf = path.join(jobDir(rootId), 'feedback', `progress_v${n}.json`);
+      const all = C.readJson(pf) || {};
+      if (m === 'GET') return sendJson(res, 200, { progress: all });
+      if (!inTeam) return sendErr(res, 403, 'Зөвхөн тайлангийн багийн гишүүн «Зассан» гэж тэмдэглэнэ');
+      const wf = WF.stateOf(rootId);
+      if (wf.state !== 'RETURNED' || n !== rel[rel.length - 1]) return sendErr(res, 409, 'Засвар илгээсний дараа тэмдэглэгээг өөрчлөх боломжгүй');
+      const fb = C.readJson(path.join(jobDir(rootId), 'feedback', `feedback_v${n}.json`)) || {};
+      if (!(fb.items || []).some(x => x.id === fpm[2])) return sendErr(res, 404, 'Санал олдсонгүй');
+      const body = await readJsonBody(req);
+      if (body.done) all[fpm[2]] = { done: true, by: who, at: C.nowIso() }; else delete all[fpm[2]];
+      C.writeJson(pf, all);
+      auditLog('feedback.progress', { job: rootId, version: n, rv_id: fpm[2], done: !!body.done, user: who, role: session.role });
+      return sendJson(res, 200, { ok: true, progress: all });
+    }
     // Царцсан feedback-ийг файлаар татах (Word / Excel) — баг болон захирал
     const fdm = rest.match(/^\/feedback\/(\d{1,3})\/(docx|xlsx)$/);
     if (m === 'GET' && fdm) {
