@@ -602,6 +602,10 @@ a.lib-doc:hover { background: var(--surface-2); }
 .mpop .mft .hint { margin-left: auto; font-size: 10px; color: var(--muted); }
 .mpop .merr { color: var(--crit); font-size: 12px; }
 .obadge.man { background: var(--accent-2); color: var(--accent); }
+.obadge.lsn { background: var(--surface-3); color: var(--accent); border: 1px solid var(--accent-2); }
+.lsn-box { margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--accent-2); background: var(--surface-3); border-radius: 6px; font-size: 13px; }
+.lsn-box ul { margin: 4px 0 0; padding-left: 18px; }
+.lsn-box .sub { color: var(--muted); }
 .mact { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .row.has-c .para { border-left-color: var(--minor); }
 .row.sev-R4 .para { border-left-color: var(--sug); }
@@ -2363,6 +2367,7 @@ function renderResult(j) {
     ${f.executive_summary && f.executive_summary !== headlineOf(f) || q || rating ? `<details class="sum-sec"><summary>Дүгнэлтийг бүтнээр унших</summary>
       ${f.executive_summary ? `<p>${esc(plain(f.executive_summary))}</p>` : ''}${rating}
       ${q ? `<p class="v-q">Гол дүгнэлтүүдийг нотлох баримт, ДАГ-ын стандартаар хамгаалж чадах уу? <b>${q}</b></p>` : ''}</details>` : ''}
+    ${lessonsHtml(f)}
     <div class="sum-foot">${decisionSummary(issues)}${qvHtml(f.quote_verification)}<span class="v-ai">AI-ийн санал — эцсийн шийдвэрийг ДАГ-ын захирал гаргана.</span></div>
   </div>`;
   html += gate0Html(f);
@@ -3242,6 +3247,24 @@ function qcHtml(x) {
   return '';
 }
 
+// Захирлын өмнөх шийдвэрээс суралцсан сургамж (зөвхөн захирал / хянагчид харагдана)
+const LSN_KIND = { REJECTED: 'Өмнө нь татгалзсан төрлийн санал', EDITED: 'Өмнө нь засаж зөвшөөрсөн', MANUAL: 'Өмнө нь гараар нэмсэн (AI алгассан)' };
+const LSN_EFFECT = { suppressed: 'Энэ удаа гаргаагүй', raised: 'Шалгаж санал гаргасан', reworded: 'Захирлын хэв маягаар бичсэн' };
+function lessonById(id) { return (current?.findings?.lessons_used || []).find(l => l && l.id === id); }
+function lessonDesc(l) {
+  if (!l) return '';
+  const body = l.kind === 'EDITED' ? `«${esc(plain(l.before || ''))}» → «${esc(plain(l.after || ''))}»` : esc(plain(l.issue || l.required_action || ''));
+  return `<b>${esc(plain(l.title))}</b> <span class="sub">· ${LSN_KIND[l.kind] || l.kind}${l.times > 1 ? ` · ${l.times} удаа` : ''}${l.rule ? ' · ' + esc(l.rule) : ''}</span>${body ? `<div class="sub">${body}</div>` : ''}`;
+}
+function lessonsHtml(f) {
+  const ap = Array.isArray(f.lessons_applied) ? f.lessons_applied : [];
+  if (!f.lessons_available && !ap.length) return '';
+  return `<details class="sum-sec"><summary>Захирлын өмнөх шийдвэрээс суралцсан — ${ap.length} / ${f.lessons_available || 0}</summary>
+    ${ap.length ? `<ul>${ap.map(a => `<li><span class="obadge lsn">${LSN_EFFECT[a.effect] || a.effect}</span> ${lessonDesc(lessonById(a.lesson_id))}${a.note ? `<div>${esc(plain(a.note))}</div>` : ''}${(a.issue_ids || []).length ? `<div>${a.issue_ids.map(id => `<span class="ref" data-issue="${esc(id)}">${esc(id)}</span>`).join(' ')}</div>` : ''}</li>`).join('')}</ul>`
+      : '<p>Өмнөх тайлангуудын сургамж энэ тайланд тохирсонгүй.</p>'}
+    <p class="v-q">Бусад тайлан дээр таны татгалзсан, засаж зөвшөөрсөн, гараар нэмсэн саналаас автоматаар суралцсан. Сургамж нь нотолгоо биш — санал бүр энэ тайлангийн ишлэл, нотолгоотой.</p></details>`;
+}
+
 function commentHtml(x) {
   const ev = Array.isArray(x.evidence) ? x.evidence : (x.evidence ? [{ source: '', detail: String(x.evidence) }] : []);
   const open = expandAll || openIds.has(x.id);
@@ -3254,7 +3277,7 @@ function commentHtml(x) {
   const mod = moduleOf(x);
   const imps = (Array.isArray(x.impacts) ? x.impacts : []).filter(i => i && (i.element || i.action));
   return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
-    <summary class="cmt-s"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
+    <summary class="cmt-s"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
     <div class="cmt-b">
       ${qcHtml(x)}
       ${where || ev.length ? `<div class="locs">${where}${ev.map(e => linkHtml(e)).filter(Boolean).join('')}</div>` : ''}
@@ -3262,6 +3285,7 @@ function commentHtml(x) {
       ${rc && x.old_anchor ? `<div class="old">Анхны тайланд: ${esc(x.old_anchor)}${x.anchor ? '' : ' · засварласан тайланд холбогдох хэсэг алга'}</div>` : ''}
       ${x.issue && x.title ? `<p>${esc(plain(x.issue))}</p>` : ''}
       ${action ? `<div class="fix"><b>${rc ? 'Шаардсан засвар' : dv === 'EDITED' ? 'Юу засах вэ (захирал зассан)' : 'Юу засах вэ'}</b>${esc(plain(action))}</div>` : ''}
+      ${(x.lesson_refs || []).length ? `<div class="lsn-box">Захирлын өмнөх шийдвэрээс суралцсан:<ul>${x.lesson_refs.map(id => `<li>${lessonDesc(lessonById(id)) || esc(id)}</li>`).join('')}</ul></div>` : ''}
       ${x.confidence ? `<div class="conf ${esc(x.confidence)}">${esc(CONF_MN[x.confidence] || x.confidence)}</div>` : ''}
       ${deep || imps.length || x.resolution_check ? `<details class="cmt-more"><summary>${ev.length ? `Нотолгоо (${ev.length})` : 'Дэлгэрэнгүй'}${imps.length ? ' · нөлөөлөх хэсэг' : ''}${x.suggested_text ? ' · найруулгын санал' : ''}</summary>
         ${x.why_it_matters ? `<p class="why"><b>Яагаад чухал вэ:</b> ${esc(plain(x.why_it_matters))}</p>` : ''}

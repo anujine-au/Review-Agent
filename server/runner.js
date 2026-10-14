@@ -25,6 +25,7 @@ const AL = require('./ailog');
 const FU = require('./followup');
 const RQ = require('./recreq');
 const ORIG = require('./originals');
+const LS = require('./lessons');
 
 function stateOf(jobDir) { return readJson(path.join(jobDir, 'state.json')) || {}; }
 function writeState(jobDir, changes) { writeJson(path.join(jobDir, 'state.json'), { ...stateOf(jobDir), ...changes }); }
@@ -45,7 +46,7 @@ function toolLabel(name, input = {}) {
 function clearWorkFiles(jobDir) {
   // Эх файлуудыг устгахын өмнө хувилбарын хадгалалт руу шилжүүлнэ (originals/)
   try { ORIG.preserve(jobDir); } catch (e) { console.error('originals:', e.message); }
-  for (const sub of ['input', 'sandbox/extracted', 'sandbox/agent', 'sandbox/evidence_images', 'sandbox/previous', 'sandbox/facts', 'prompt.txt']) rmrf(path.join(jobDir, sub));
+  for (const sub of ['input', 'sandbox/extracted', 'sandbox/agent', 'sandbox/evidence_images', 'sandbox/previous', 'sandbox/facts', 'sandbox/lessons', 'prompt.txt']) rmrf(path.join(jobDir, sub));
   // Claude Code-ийн төслийн хавтас (session persistence унтраалттай ч хоосон хавтас үүсч болно)
   const slug = path.join(jobDir, 'sandbox').replace(/[^A-Za-z0-9]/g, '-');
   rmrf(path.join(process.env.USERPROFILE || os.homedir(), '.claude', 'projects', slug));
@@ -72,7 +73,7 @@ function runProcess(cmd, args, opts, onLine) {
   });
 }
 
-function buildPrompt(job, mask, imageNote) {
+function buildPrompt(job, mask, imageNote, lessonCount = 0) {
   const maskNote = mask
     ? '- PRIVACY: personal data has been replaced by tokens such as [PERSON-0001], [ID-0001], [PHONE-0001], [EMAIL-0001], [ADDR-0001], [ACCT-0001]. The same token always means the same real value across all files, so you can still count, match and cross-check by token. Copy tokens verbatim (including brackets) into your output; never try to guess, reconstruct or comment on the real values.'
     : '';
@@ -88,7 +89,13 @@ Files for this review (all paths relative to the current directory):
 - Audit program (only if uploaded): extracted/program__*.txt — apply M02-04: list every program step and how the report covers it in "program_coverage" (status finding / no_exception / scope_limitation / not_reported, with report_anchor and program_ref). If no program__ file exists, set "program_coverage": [].
 - Follow-up extract RPT-175 (uploaded by the auditor, or auto-attached from the department's central RPT-175 for this unit — file RPT175_<unit>_<date>.csv): extracted/followup__*.txt — one row per recommendation; the "Статус (S1–S7)" column is already mapped from the legacy status (Done + ДАГ баталгаажуулсан → S5, To-do → S1). Apply M10-01…07 and fill "followup_check" with one row per finding (iss_id, title, rating, status, due_date, overdue_days, in_report, report_anchor, repeat). The Rule Engine already raised M10-01 (open items not mentioned in the report) and M10-04 (overdue) — see facts/rule_engine.json; do not repeat them, but do judge M10-02 repeats (same process/cause within 12 months — RPT-175 has no RC code column, so compare by title, category and cause text) and M10-07. If absent, set "followup_check": [].
 - Recommendation requirements (only if present): extracted/recreq__*.txt — from the department's «RPT175 impact matrix»: (1) the requirement types a recommendation must carry (ХАРИУЦАГЧ/ЭРХ, ХУГАЦАА/SLA, НОТОЛГОО, ХААЛТ/GATE …), (2) this unit's earlier RPT-175 recommendations with the target document, chapter and requirements each one lands on (REQ-NN), (3) a catalog of library documents (DOC numbers repeat across departments — match by name + department). Apply M08-08…M08-12 and fill "recommendation_check" with one row per recommendation in the report. If absent, judge M08-08…M08-10 from the report alone, set catalog_match "NOT_CHECKED", and skip M08-11/M08-12.
-- Pre-computed Excel statistics: extracted/*.profile.txt  (header row, data row count, total rows excluded, per-column sum/min/max/unique, duplicates with row numbers, counts and sums per category value)
+${lessonCount ? `- Director lessons: lessons/director_lessons.json — ${lessonCount} lessons from what the ДАГ director changed in the AI's EARLIER reviews of OTHER reports (id, kind, rule, title, times = how often it happened). Use them to review the way the director does:
+  - kind "REJECTED": the director removed this kind of comment. Do not raise a similar comment (same rule, same kind of matter) unless this report's evidence clearly makes it material.
+  - kind "EDITED": the director rewrote the required action (before → after). When you raise a similar comment, write required_action the way the director did (wording, specificity, owner/deadline style).
+  - kind "MANUAL": the director added a comment the AI had missed. Actively check whether the same kind of problem exists in THIS report; raise it only with evidence and a quote from this report.
+  Lessons rank below system_prompt.md and decision_rules.md: they never change severity rules, the verdict or the hard rules, and are never evidence by themselves — every issue still needs its own evidence and quote from this report. Never copy facts, names or numbers from a lesson. The director reviews every comment anyway.
+  For every issue a lesson shaped, add "lesson_refs": ["L-XXXXXX"]. Add top-level "lessons_applied": [{"lesson_id": "L-XXXXXX", "effect": "suppressed" | "raised" | "reworded", "note": "≤1 short sentence in Mongolian: what you did and why"}] — one row per lesson you actually used, including "suppressed" ones (a comment you deliberately did not raise). Omit lessons that did not apply; [] if none.
+` : ''}- Pre-computed Excel statistics: extracted/*.profile.txt  (header row, data row count, total rows excluded, per-column sum/min/max/unique, duplicates with row numbers, counts and sums per category value)
 - Images: ${imageNote}
 - Write exactly three result files: output/review_findings.json, output/review_summary.json, output/review_report.md
 
@@ -206,7 +213,7 @@ function normIssue(it, schemaVersion, origin) {
  * review_findings.json-г эцэслэнэ: Rule Engine-ийн саналыг нэгтгэх, ишлэл нь олдоогүй LLM саналыг хасах (AT-12),
  * RV ID өгөх, эрэмбэлэх, verdict / тоо / scorecard / gate0 / ai_run-ийг тооцож бичих.
  */
-function finalizeFindings(jobDir, { rules, cycle, eng, aiRun }) {
+function finalizeFindings(jobDir, { rules, cycle, eng, aiRun, lessons = [] }) {
   const out = path.join(jobDir, 'sandbox', 'output');
   const fPath = path.join(out, 'review_findings.json');
   const f = readJson(fPath) || {};
@@ -223,6 +230,7 @@ function finalizeFindings(jobDir, { rules, cycle, eng, aiRun }) {
   if (dropped.length) f.dropped_issues = dropped.map(it => ({ ...it, drop_reason: 'Ишлэл тайлангийн бичвэрээс олдоогүй (SP-118-04/03 AT-12)' }));
   S.assignIds(f, eng, cycle);
   for (const d of f.dropped_issues || []) d.id = `DROP-${d.id}`;
+  LS.attach(f, lessons);   // захирлын сургамж: зөвхөн өгөгдсөн ID-г үлдээж, дэлгэрэнгүйг хавсаргана
 
   f.schema_version = S.SCHEMA_VERSION;
   f.gate0 = rules.gate0;
@@ -423,7 +431,7 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
       if (rules.gate0.status === 'REJECTED') throw new Error('Gate-0: үндсэн тайлан уншигдсангүй (RUN_REJECTED)');
     }
 
-    let prompt, prev = null;
+    let prompt, prev = null, lessons = [];
     if (rootDir) {
       prev = previousIssues(rootDir);
       fs.mkdirSync(path.join(sandbox, 'previous'), { recursive: true });
@@ -433,7 +441,19 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
         ? `Захирал санал шийдвэрлээгүй тул татгалзаагүй ${prev.length} саналыг шалгана`
         : `Захирлын зөвшөөрсөн ${prev.length} саналыг засварласан тайлантай тулгана`);
       prompt = buildRecheckPrompt(job, prev.length, mask, cycle);
-    } else prompt = buildPrompt(job, mask, imageNote);
+    } else {
+      // Захирлын өмнөх шийдвэрээс суралцах: бусад тайлангийн REJECTED / EDITED / гараар нэмсэн санал
+      try { lessons = LS.collect({ excludeDir: jobDir }); } catch (e) { addEvent(jobDir, 'system', 'Сургамж цуглуулахад алдаа: ' + e.message); }
+      if (lessons.length) {
+        fs.mkdirSync(path.join(sandbox, 'lessons'), { recursive: true });
+        writeJson(path.join(sandbox, 'lessons', 'director_lessons.json'), lessons);
+        aiRun.lessons_count = lessons.length;
+        aiRun.lessons_sha256 = AL.sha256(JSON.stringify(lessons));
+        const n = k => lessons.filter(l => l.kind === k).length;
+        addEvent(jobDir, 'system', `Захирлын өмнөх шийдвэрээс ${lessons.length} сургамж ашиглана (татгалзсан ${n('REJECTED')}, зассан ${n('EDITED')}, гараар нэмсэн ${n('MANUAL')})`);
+      }
+      prompt = buildPrompt(job, mask, imageNote, lessons.length);
+    }
     fs.writeFileSync(path.join(jobDir, 'prompt.txt'), prompt, 'utf8');
     const arch = AL.archivePrompts(templateId, [path.join(PATHS.prompts, 'system_prompt.md'), path.join(PATHS.prompts, 'output_template.md'),
       path.join(PATHS.config, 'decision_rules.md'), path.join(PATHS.config, 'writing_standard.md'), path.join(__dirname, 'runner.js'), path.join(__dirname, 'rules.js')]);
@@ -484,7 +504,7 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
         extra.verdict = fr.verdict;
         addEvent(jobDir, 'system', `Дахин хяналт C${cycle}: засагдсан ${fr.stats.RESOLVED}, засагдаагүй ${fr.stats.NOT_RESOLVED}, хэсэгчлэн ${fr.stats.PARTIAL}, шинэ ${fr.stats.new} · ${fr.verdict}`);
       } else {
-        const fr = finalizeFindings(jobDir, { rules, cycle, eng, aiRun });
+        const fr = finalizeFindings(jobDir, { rules, cycle, eng, aiRun, lessons });
         verifyFindings(jobDir);   // Rule Engine-ийн саналын ишлэлийг мөн тэмдэглэнэ
         extra.verdict = fr.verdict;
         addEvent(jobDir, 'system', `Эцсийн санал: ${fr.verdict} · R1 ${fr.counts.r1} · R2 ${fr.counts.r2} · R3 ${fr.counts.r3} · R4 ${fr.counts.r4}`

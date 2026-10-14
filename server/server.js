@@ -318,6 +318,9 @@ function filterForAuditor(dir, text) {
   if (Array.isArray(f.issues)) f.issues = f.issues.filter(it => ['APPROVED', 'EDITED'].includes(dec[it.id]?.decision))
     .map(it => dec[it.id].decision === 'EDITED' && dec[it.id].edited_text ? { ...it, required_action: dec[it.id].edited_text } : it);
   delete f.dropped_issues;
+  // Захирлын сургамж — AI-ийн дотоод мэдээлэл, аудиторт харуулахгүй
+  for (const k of ['lessons_applied', 'lessons_used', 'lessons_available']) delete f[k];
+  for (const it of f.issues || []) delete it.lesson_refs;
   return JSON.stringify(f);
 }
 const jobMeta = id => C.readJson(path.join(jobDir(id), 'job.json')) || {};
