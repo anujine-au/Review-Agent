@@ -41,6 +41,7 @@ const { verifyFindings } = require('./verify');
 const U = require('./users');
 const CR = require('./criteria');
 const FU = require('./fetch_url');
+const GD = require('./gdrive');
 const { detectFile } = require('./detect_meta');
 const S = require('./standard');
 const AL = require('./ailog');
@@ -573,6 +574,25 @@ async function handle(req, res) {
     const t = LIB.ruleText(lm[1]);
     return t === null ? sendErr(res, 404, 'Not found') : send(res, 200, 'text/markdown; charset=utf-8', t);
   }
+  // Google Drive холболт (admin): нэг дансны унших эрхээр хувийн Drive линкийг татах
+  if (p === '/api/gdrive' || p.startsWith('/api/gdrive/')) {
+    if (!U.can(session.role, 'users.manage')) return deny();
+    try {
+      if (m === 'GET' && p === '/api/gdrive') return sendJson(res, 200, GD.status());
+      if (m === 'POST' && p === '/api/gdrive/start') { const b = await readJsonBody(req); return sendJson(res, 200, { url: GD.start(b.client_id, b.client_secret) }); }
+      if (m === 'POST' && p === '/api/gdrive/finish') {
+        const b = await readJsonBody(req), st = await GD.finish(b.url, who);
+        log('GDRIVE_CONNECT', st.email); auditLog('GDRIVE_CONNECT', { by: who, account: st.email });
+        return sendJson(res, 200, st);
+      }
+      if (m === 'DELETE' && p === '/api/gdrive') {
+        const was = GD.status().email; await GD.disconnect();
+        log('GDRIVE_DISCONNECT', was); auditLog('GDRIVE_DISCONNECT', { by: who, account: was });
+        return sendJson(res, 200, GD.status());
+      }
+    } catch (e) { return sendErr(res, 400, e.message); }
+    return sendErr(res, 404, 'Not found');
+  }
   // Лог (AI Run, шийдвэр) + hash-chain бүрэн бүтэн байдал
   if (m === 'GET' && p === '/api/logs') {
     if (!U.can(session.role, 'logs.view')) return deny();
@@ -618,7 +638,7 @@ async function handle(req, res) {
     const tmpDir = path.join(P.jobs, '_detect');
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmp = path.join(tmpDir, C.randomString(12, 'abcdefghijklmnopqrstuvwxyz0123456789'));
-    let file = null, ext = '', host = '';
+    let file = null, ext = '', host = '', via = '';
     try {
       if (p === '/api/detect-meta') {
         ext = path.extname(safeName(url.searchParams.get('name'))).toLowerCase();
@@ -629,12 +649,12 @@ async function handle(req, res) {
         const body = await readJsonBody(req);
         try { host = new URL(String(body.url)).hostname; } catch {}
         const got = await FU.download(String(body.url || ''), { maxBytes: MAX_UPLOAD_MB * 1024 * 1024, destFn: raw => { ext = path.extname(safeName(raw)).toLowerCase(); return { name: raw, path: tmp + ext }; } });
-        file = got.path;
+        file = got.path; via = got.via;
         if (!['.docx', '.pdf'].includes(ext)) return sendJson(res, 200, { meta: {} });
       }
       if (!magicOk(file, ext)) return sendJson(res, 200, { meta: {} });
       const meta = detectFile(file, ext, fs.readFileSync(file));
-      log('DETECT_META', `${host || 'upload'} fields=${Object.keys(meta).join(',') || '-'}`);
+      log('DETECT_META', `${host || 'upload'}${via === 'drive' ? ' (drive)' : ''} fields=${Object.keys(meta).join(',') || '-'}`);
       return sendJson(res, 200, { meta });
     } catch (e) {
       return sendErr(res, 400, e.message);
@@ -788,7 +808,7 @@ async function handle(req, res) {
       } catch (e) { log('FILE_URL_FAIL', `${id} ${host}`); return sendErr(res, 400, `${e.message}. Линкээс татаж чадахгүй бол Google Docs дээр «Файл → Download → Microsoft Word (.docx)» хийж, файлаар оруулна уу.`); }
       const ext = path.extname(got.name).toLowerCase();
       if (!magicOk(got.path, ext)) { C.rmrf(got.path); return sendErr(res, 400, `${got.name}: файлын агуулга ${ext} өргөтгөлтэй тохирохгүй байна`); }
-      log('FILE_URL', `${id} ${host}`);
+      log('FILE_URL', `${id} ${host}${got.via === 'drive' ? ` drive:${GD.status().email} owner:${got.owner}` : ''}`);
       // Эх файлын хадгалалтад «линкээс» гэж тэмдэглэх (хаягийн зөвхөн host-ыг)
       const jm = C.readJson(path.join(dir, 'job.json')) || {};
       // Линкийн агуулга дараа өөрчлөгдөж болох тул тухайн агшны хуулбар (originals/) + линк, огноо, sha256-ийг тэмдэглэнэ (§6)

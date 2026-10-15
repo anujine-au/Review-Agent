@@ -1074,6 +1074,7 @@ mark[data-issue] { cursor: pointer; }
         <div class="sub">Хэрэглэгч бүр өөрийн нэр, нууц үгээр нэвтэрч, үйлдэл бүр нэрээр бүртгэгдэнэ (DOC-1917).</div></div>
     </div>
     <div class="card" id="loginState" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
+    <div class="card" id="gdCard" style="padding:12px 16px;margin-bottom:14px"></div>
     <div class="card" style="padding:12px 16px;margin-bottom:14px"><b>Role-ийн эрх</b><ul class="sub" style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px"><li><b>ДАГ-ын захирал</b> — бүх тайлан; санал шийдвэрлэх, «Батлаад илгээх», эцэслэн батлах, эцсийн тайлан татах</li><li><b>Ахлах аудитор, Аудитор</b> — зөвхөн өөрийн болон багийн тайлан; хянуулах, засвар оруулах; захирал илгээсэн саналыг л харна</li><li><b>Admin</b> — хэрэглэгч, эрх удирдах</li></ul></div>
     <div class="card" style="padding:16px;margin-bottom:14px">
       <b>Шинэ хэрэглэгч</b>
@@ -1347,6 +1348,43 @@ function showTemp(username, pw) {
   // Хүснэгтийн доор товч дарсан үед ч алгасахгүйн тулд шууд харуулна. Дахин «Түр нууц үг» дарвал энэ нь хүчингүй болно.
   setTimeout(() => alert(`${username} — түр нууц үг:\n\n${pw}\n\nНэвтрэх нэр: ${username}\nХэрэглэгчид биечлэн/утсаар өгнө. Дахин «Түр нууц үг» дарвал энэ нь хүчингүй болно.`), 50);
 }
+// Google Drive холболт: хувийн Drive / Docs линкийг нэг дансны унших эрхээр татах (server/gdrive.js)
+async function loadGdrive() {
+  const box = $('#gdCard'); if (!box) return;
+  let st; try { st = await api('/api/gdrive'); } catch (e) { box.classList.add('hidden'); return; }
+  if (st.connected) {
+    box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Google Drive: ✓ холбогдсон</b><span class="sub">— <b>${esc(st.email || '')}</b>-ийн эрхээр (зөвхөн унших) · ${esc(fmtDate(st.connected_at))} · ${esc(st.by || '')}</span>
+      <button class="btn sm ghost" id="gdOff" style="margin-left:auto">Салгах</button></div>
+      <div class="sub" style="margin-top:6px">Хувийн (netgroup.mn-д хуваалцсан) Drive, Docs, Sheets линкийг энэ дансны эрхээр татаж, гарчиг, огноог автоматаар бөглөнө. Энэ данс харж чадах файлыг л татна. Татсан бүрийг лог-д бүртгэнэ.</div>`;
+    $('#gdOff').onclick = async () => {
+      if (!confirm(`Google Drive-ийн холболтыг салгах уу?\n\nGoogle талд эрхийг цуцална. Үүний дараа зөвхөн «Anyone with the link» линк ажиллана.`)) return;
+      try { await api('/api/gdrive', { method: 'DELETE' }); loadGdrive(); } catch (e) { alert(e.message); }
+    };
+    return;
+  }
+  box.innerHTML = `<b>Google Drive холбох</b> <span class="sub">— холбовол хувийн Drive линкээс тайлан оруулж, гарчиг, огноог автоматаар бөглөнө («Anyone with the link» хэрэггүй).</span>
+    <details class="sub" style="margin-top:6px"><summary style="cursor:pointer">Client ID, secret яаж авах вэ (нэг удаа)</summary><ol style="margin:6px 0;padding-left:18px;display:grid;gap:3px">
+      <li>netgroup.mn дансаараа <b>console.cloud.google.com</b> → шинэ project үүсгэнэ.</li>
+      <li>«APIs & Services → Library» → <b>Google Drive API</b> → Enable.</li>
+      <li>«OAuth consent screen» → User type: <b>Internal</b> → нэр оруулаад хадгална.</li>
+      <li>«Credentials → Create credentials → OAuth client ID» → Application type: <b>Desktop app</b> → Client ID, Client secret-ийг доор хуулна.</li></ol></details>
+    <div class="ugrid" style="margin-top:8px"><input id="gdId" placeholder="Client ID (…apps.googleusercontent.com)" spellcheck="false"><input id="gdSecret" type="password" autocomplete="off" placeholder="Client secret"><button class="btn primary" id="gdStart">Google-ээр холбох</button></div>
+    <div id="gdStep2" class="hidden" style="margin-top:10px"><div class="sub">Нээгдсэн цонхонд дансаа сонгоод <b>Drive-ийг харах</b> эрхийг зөвшөөрнө. Дараа нь хуудас «холбогдож чадсангүй» гэж гарна — <b>энэ хэвийн</b>. Тэр цонхны хаягийн мөрөөс бүтэн хаягийг (http://127.0.0.1/?…) хуулж энд оруулна:</div>
+      <div class="ugrid" style="margin-top:6px"><input id="gdBack" placeholder="http://127.0.0.1/?state=…&code=…" spellcheck="false"><button class="btn primary" id="gdFinish">Баталгаажуулах</button></div></div>
+    <div class="sub" id="gdMsg" style="margin-top:6px"></div>`;
+  $('#gdStart').onclick = async () => {
+    try {
+      const r = await api('/api/gdrive/start', { method: 'POST', body: JSON.stringify({ client_id: $('#gdId').value, client_secret: $('#gdSecret').value }) });
+      window.open(r.url, '_blank', 'noopener');
+      $('#gdStep2').classList.remove('hidden'); $('#gdBack').focus(); $('#gdMsg').textContent = '';
+    } catch (e) { $('#gdMsg').textContent = e.message; }
+  };
+  $('#gdFinish').onclick = async () => {
+    $('#gdFinish').disabled = true;
+    try { await api('/api/gdrive/finish', { method: 'POST', body: JSON.stringify({ url: $('#gdBack').value }) }); loadGdrive(); }
+    catch (e) { $('#gdMsg').textContent = e.message; $('#gdFinish').disabled = false; }
+  };
+}
 async function loadUsers() {
   show('#vUsers');
   let d; try { d = await api('/api/users'); } catch (e) { return; }
@@ -1358,6 +1396,7 @@ async function loadUsers() {
       try { await api('/api/auth/login-required', { method: 'POST', body: JSON.stringify({ on: false }) }); location.reload(); } catch (e) { alert(e.message); }
     };
   }
+  loadGdrive();
   const roleOpts = sel => Object.entries(d.roles).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(v)}</option>`).join('');
   $('#nuRole').innerHTML = roleOpts('auditor');
   $('#uTable').innerHTML = '<tr><th>Нэвтрэх нэр</th><th>Нэр</th><th>Role</th><th>Сүүлд нэвтэрсэн</th><th>Төлөв</th><th></th></tr>' + d.users.map(u => `
