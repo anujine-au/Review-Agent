@@ -38,6 +38,17 @@ function unseal(s) {
   const d = crypto.createDecipheriv('aes-256-gcm', key(), iv); d.setAuthTag(tag);
   return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
 }
+// Google руу хандах: сүлжээний түр тасалдалд (холбогдож чадаагүй) нэг удаа дахин оролдоно, шалтгааныг тодорхой хэлнэ
+async function gfetch(url, opt) {
+  for (let i = 0; ; i++) {
+    try { return await fetch(url, opt); } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      const code = (e.cause && (e.cause.code || e.cause.message)) || e.message;
+      if (i < 1) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      throw new Error(`Сервер Google (${new URL(url).hostname}) руу холбогдож чадсангүй (${code}). Хэсэг хүлээгээд дахин оролдоно уу`);
+    }
+  }
+}
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch { return null; } };
 const writeCfg = c => fs.writeFileSync(CFG, JSON.stringify(c, null, 2), { mode: 0o600 });
 
@@ -69,9 +80,10 @@ async function finish(redirected, by) {
   const p = pending.get(u.searchParams.get('state'));
   if (!p || p.exp < Date.now()) throw new Error('Хугацаа дууссан эсвэл өөр холболтын хаяг байна — «Google-ээр холбох»-ыг дахин дарна уу');
   pending.delete(u.searchParams.get('state'));
-  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const r = await gfetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ code: u.searchParams.get('code') || '', client_id: p.clientId, client_secret: p.clientSecret, redirect_uri: REDIRECT, grant_type: 'authorization_code', code_verifier: p.verifier }) });
   const t = await r.json().catch(() => ({}));
+  if (t.error === 'invalid_grant') throw new Error('Зөвшөөрлийн код хүчингүй эсвэл хэрэглэгдсэн байна — «Google-ээр холбох»-ыг дахин дарж, шинэ хаягаа шууд оруулна уу');
   if (!r.ok || !t.refresh_token) throw new Error('Google token олгосонгүй: ' + (t.error_description || t.error || r.status));
   if (!String(t.scope || '').includes('drive.readonly')) throw new Error('Drive унших эрхийг зөвшөөрөөгүй байна — дахин холбож, Drive-ийн нүдийг чагтална уу');
   let email = '';
@@ -84,7 +96,7 @@ async function finish(redirected, by) {
 async function disconnect() {
   const c = readCfg();
   if (c && c.refresh) {
-    try { await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: unseal(c.refresh) }) }); } catch { /* сүлжээгүй ч локал файлыг устгана */ }
+    try { await gfetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: unseal(c.refresh) }) }); } catch { /* сүлжээгүй ч локал файлыг устгана */ }
   }
   access = null;
   for (const f of [CFG, KEYF]) { try { fs.rmSync(f, { force: true }); } catch {} }
@@ -95,7 +107,7 @@ async function accessToken() {
   if (access && access.exp > Date.now()) return access.token;
   const c = readCfg();
   if (!c || !c.refresh) throw new Error('Google Drive холбогдоогүй');
-  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const r = await gfetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: c.client_id, client_secret: unseal(c.secret), refresh_token: unseal(c.refresh), grant_type: 'refresh_token' }) });
   const t = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(t.error === 'invalid_grant' ? 'Google Drive-ийн холболт хүчингүй болсон — админ дахин холбоно уу' : 'Google token сэргээж чадсангүй');
@@ -106,7 +118,7 @@ async function accessToken() {
 // Файлын ID → татах хаяг, нэр. Google Docs / Sheets-ийг .docx / .xlsx болгож экспортолно.
 async function resolve(fileId, signal) {
   const tok = await accessToken();
-  const r = await fetch(`${API}${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,owners(emailAddress)&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${tok}` }, signal });
+  const r = await gfetch(`${API}${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,owners(emailAddress)&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${tok}` }, signal });
   if (r.status === 404) throw new Error(`Файл олдсонгүй эсвэл ${status().email || 'холбосон данс'}-д хандах эрх алга`);
   if (!r.ok) throw new Error(`Google Drive хариу өгсөнгүй (HTTP ${r.status})`);
   const f = await r.json();

@@ -34,6 +34,11 @@ global.fetch = async (url, opt = {}) => {
   if (String(url).includes('/files/DOC1?fields')) return json({ id: 'DOC1', name: 'Тайлан', mimeType: 'application/vnd.google-apps.document', owners: [{ emailAddress: 'bat@netgroup.mn' }] });
   if (String(url).includes('/files/FOLD?fields')) return json({ id: 'FOLD', name: 'x', mimeType: 'application/vnd.google-apps.folder' });
   if (String(url).includes('/files/NOPE?fields')) return json({}, 404);
+  if (String(url).includes('/files/FLAKY?fields')) {   // эхний оролдлогод сүлжээ тасарна
+    if (calls.filter(c => c.url.includes('/files/FLAKY')).length === 1) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+    return json({ id: 'FLAKY', name: 'a.pdf', mimeType: 'application/pdf' });
+  }
+  if (String(url).includes('/files/DOWN?fields')) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } });
   throw new Error('unexpected fetch ' + url);
 };
 
@@ -68,6 +73,8 @@ test('холбох → token шифрлэгдсэн, файлыг татах х�
   assert.equal(r.owner, 'bat@netgroup.mn');
   await assert.rejects(GD.resolve('FOLD'), /Хавтасны/);
   await assert.rejects(GD.resolve('NOPE'), /эрх алга/);
+  assert.equal((await GD.resolve('FLAKY')).name, 'a.pdf');   // түр тасалдалд дахин оролдоно
+  await assert.rejects(GD.resolve('DOWN'), /холбогдож чадсангүй \(ENOTFOUND\)/);
 
   await GD.disconnect();
   assert.equal(GD.connected(), false);
