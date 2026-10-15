@@ -627,6 +627,9 @@ a.lib-doc:hover { background: var(--surface-2); }
 .row.sev-R1 .para { border-left-color: var(--crit); }
 .row.flash .para { animation: flash 1.6s; }
 @keyframes flash { 0%, 40% { background: var(--accent-2); } }
+.para tr.flash td { animation: flash 1.6s; }
+a.seclink { color: var(--accent); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+a.seclink:hover { text-decoration-style: solid; }
 .para.k-title { font-size: 21px; font-weight: 700; padding-top: 22px; padding-bottom: 14px; }
 .para.k-h1 { font-size: 18px; font-weight: 700; padding-top: 18px; }
 .para.k-h2 { font-size: 16.5px; font-weight: 700; padding-top: 14px; }
@@ -2654,19 +2657,20 @@ function feedbackHtml() {
     return head + body;
   }
   if (docs[fb.job] === null) return head + '<div class="card empty">Тайланг ачаалж байна…</div>';
-  return head + feedbackListHtml({ ...fb, items });
+  buildSecMap(docs[fb.job]);
+  return head + feedbackListHtml({ ...fb, items, _doc: docs[fb.job] });
 }
 function feedbackListHtml(fb) {
   const RCM = { NOT_RESOLVED: 'Засагдаагүй', PARTIAL: 'Хэсэгчлэн засагдсан', REGRESSED: 'Шинэ алдаа үүссэн', UNABLE: 'Шалгах боломжгүй' };
   return `<div class="card pad">
     <div style="display:grid;gap:8px">${fb.items.map(x => `<div class="fbi ${esc(x.severity)}${x._done ? ' done' : ''}">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sev ${esc(x.severity)}">${esc(SEV_MN[x.severity] || x.severity)}</span><b>${esc(x.title)}</b>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sev ${esc(x.severity)}">${esc(SEV_MN[x.severity] || x.severity)}</span><b>${secLinks(x.title)}</b>
         ${x.recheck_status ? `<span class="wfst RETURNED">${esc(RCM[x.recheck_status] || x.recheck_status)}</span>` : ''}${x.edited ? '<span class="sub">(захирал зассан)</span>' : ''}${x._fb ? `<span class="spacer"></span>${fbCheckBtn(x, x._fbCan)}` : ''}</div>
-      ${x.anchor ? `<div class="sub">Байршил: ${esc(x.anchor)}</div>` : ''}${x.quote ? `<q>${esc(x.quote)}</q>` : ''}
-      ${x.issue ? `<div>${esc(x.issue)}</div>` : ''}
+      ${x.anchor ? `<div class="sub">Байршил: ${(k => k && fb._doc ? secA(k.block, k.row, x.anchor, 'Тайлан дээр харах') : secLinks(x.anchor))(anchorKey(x.anchor))}</div>` : ''}${x.quote ? `<q>${esc(x.quote)}</q>` : ''}
+      ${x.issue ? `<div>${secLinks(x.issue)}</div>` : ''}
       ${x.recheck_note ? `<div class="sub"><b>Дахин шалгалт:</b> ${esc(x.recheck_note)}</div>` : ''}
-      ${x.required_action ? `<div class="fix"><b>Юу засах вэ</b>${esc(x.required_action)}</div>` : ''}
-      ${x.why_it_matters ? `<div class="sub"><b>Яагаад:</b> ${esc(x.why_it_matters)}</div>` : ''}
+      ${x.required_action ? `<div class="fix"><b>Юу засах вэ</b>${secLinks(x.required_action)}</div>` : ''}
+      ${x.why_it_matters ? `<div class="sub"><b>Яагаад:</b> ${secLinks(x.why_it_matters)}</div>` : ''}
       <div class="cmt-meta">${esc(x.id)}${x.module ? ` · ${esc(x.module)} ${esc(MODULES[x.module] || '')}` : ''}${x.rule ? ` · ${esc(x.rule)}` : ''}${x.confidence ? ` · итгэл: ${esc(CONF_MN[x.confidence] || x.confidence)}` : ''}${x.source ? ` · ${esc(x.source)}` : ''}</div>
     </div>`).join('') || (fbDoneFilter !== 'ALL' ? '<div class="sub">Энэ шүүлтүүрт санал алга.</div>' : '<div class="sub">Энэ хувилбарт засах санал байхгүй.</div>')}</div></div>`;
 }
@@ -3296,6 +3300,45 @@ function shortTitle(x) {
   const s = String(x.issue || x.location || '').split(/(?<=[.!?])\s/)[0];
   return s.length > 90 ? s.slice(0, 88) + '…' : s;
 }
+// Санал доторх бүлгийн дугаар (1.4, 2.6.1 …) → тайлангийн тэр хэсэг рүү үсрэх холбоос.
+// Зөвхөн тайланд үнэхээр байгаа дугаарыг холбоно: эхлээд гарчиг, дараа нь дугаартай догол мөр, хүснэгтийн мөр
+let secMap = {}, secIds = new Set();
+function buildSecMap(doc) {
+  secMap = {};
+  const blocks = (doc && doc.blocks) || [];
+  secIds = new Set(blocks.map(b => b.id));
+  const numRe = /^(\d+(?:\.\d+)+)\.?(?:\s|$)/;
+  const pass = isHead => blocks.forEach(b => {
+    if (b.kind === 'table' || /^(title|h\d)$/.test(b.kind) !== isHead) return;
+    const m = String(b.text || '').trim().match(numRe);
+    if (m && !secMap[m[1]]) secMap[m[1]] = { block: b.id };
+  });
+  pass(true); pass(false);
+  blocks.forEach(b => b.kind === 'table' && (b.rows || []).forEach((r, i) => {
+    const m = String((r || [])[0] || '').trim().match(/^(\d+(?:\.\d+)+)\.?$/);
+    if (m && !secMap[m[1]]) secMap[m[1]] = { block: b.id, row: i + 1 };
+  }));
+}
+const secA = (id, row, label, title) => `<a href="#" class="seclink" data-sec="${esc(id)}"${row ? ` data-secrow="${row}"` : ''} title="${esc(title)}">${esc(label)}</a>`;
+function secLinks(s) {
+  let t = esc(s);
+  if (!secIds.size) return t;
+  // Догол мөр / хүснэгтийн мөрийн дугаар (P185, T3R6)
+  t = t.replace(/\b(P\d+|T\d+)(R\d+)?\b/g, (m, b, r) => secIds.has(b) ? secA(b, r ? +r.slice(1) : 0, m, 'Тайлан дээр харах') : m);
+  // Хувь, мөнгөн дүн, огноо, журмын заалт (§14.2, DOC-1912 …)-ыг холбохгүй
+  return t.replace(/(^|[\s(«;:])(\d+(?:\.\d+)+)(?![\d%]|\.\d|\s?(?:%|₮|сая|тэрбум|мянга|хувь|төг|дахин))/gi, (m, pre, n, off, all) => {
+    const g = secMap[n];
+    if (!g || /(?:§|DOC-?\d*|RPT-?\d*|журм\S*|дүрм\S*|стандарт\S*|заалт\S*|ОУДАС|IIA)\s*$/i.test(all.slice(Math.max(0, off - 20), off + pre.length))) return m;
+    return pre + secA(g.block, g.row, n, `Тайлангийн ${n} хэсэг рүү очих`);
+  });
+}
+function gotoSec(id, row) {
+  // Жагсаалтын харагдац / өөр таб дээр бол эхлээд тайлан дээрх харагдац руу шилжинэ
+  if (!document.getElementById('b-' + id) && !gapOf[id]) { fbView = 'doc'; activeTab = 'doc'; renderJob(); }
+  gotoBlock(id);
+  const tr = row && document.querySelector(`#b-${CSS.escape(id)} tr:nth-child(${row})`);
+  if (tr) { tr.classList.add('flash'); setTimeout(() => tr.classList.remove('flash'), 1700); }
+}
 // Ишлэлийн шалгалтын төлөв (server/verify.js)
 function qcHtml(x) {
   const c = x.quote_check; if (!c) return '';
@@ -3335,20 +3378,20 @@ function commentHtml(x) {
   const mod = moduleOf(x);
   const imps = (Array.isArray(x.impacts) ? x.impacts : []).filter(i => i && (i.element || i.action));
   return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' || x._done ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
-    <summary class="cmt-s">${x._fb ? fbTick(x, x._fbCan) : ''}<span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${esc(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
+    <summary class="cmt-s">${x._fb ? fbTick(x, x._fbCan) : ''}<span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${secLinks(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
     <div class="cmt-b">
       ${qcHtml(x)}
       ${where || ev.length ? `<div class="locs">${where}${ev.map(e => linkHtml(e)).filter(Boolean).join('')}</div>` : ''}
-      ${x.location && !x.anchor ? `<div class="loc">📍 ${esc(x.location)}</div>` : ''}
+      ${x.location && !x.anchor ? `<div class="loc">📍 ${secLinks(x.location)}</div>` : ''}
       ${rc && x.old_anchor ? `<div class="old">Анхны тайланд: ${esc(x.old_anchor)}${x.anchor ? '' : ' · засварласан тайланд холбогдох хэсэг алга'}</div>` : ''}
-      ${x.issue && x.title ? `<p>${esc(plain(x.issue))}</p>` : ''}
-      ${action ? `<div class="fix"><b>${rc ? 'Шаардсан засвар' : dv === 'EDITED' ? 'Юу засах вэ (захирал зассан)' : 'Юу засах вэ'}</b>${esc(plain(action))}</div>` : ''}
+      ${x.issue && x.title ? `<p>${secLinks(plain(x.issue))}</p>` : ''}
+      ${action ? `<div class="fix"><b>${rc ? 'Шаардсан засвар' : dv === 'EDITED' ? 'Юу засах вэ (захирал зассан)' : 'Юу засах вэ'}</b>${secLinks(plain(action))}</div>` : ''}
       ${(x.lesson_refs || []).length ? `<div class="lsn-box">Захирлын өмнөх шийдвэрээс суралцсан:<ul>${x.lesson_refs.map(id => `<li>${lessonDesc(lessonById(id)) || esc(id)}</li>`).join('')}</ul></div>` : ''}
       ${x.confidence ? `<div class="conf ${esc(x.confidence)}">${esc(CONF_MN[x.confidence] || x.confidence)}</div>` : ''}
       ${deep || imps.length || x.resolution_check ? `<details class="cmt-more"><summary>${ev.length ? `Нотолгоо (${ev.length})` : 'Дэлгэрэнгүй'}${imps.length ? ' · нөлөөлөх хэсэг' : ''}${x.suggested_text ? ' · найруулгын санал' : ''}</summary>
-        ${x.why_it_matters ? `<p class="why"><b>Яагаад чухал вэ:</b> ${esc(plain(x.why_it_matters))}</p>` : ''}
-        ${imps.length ? `<div class="imp"><b>Үүнээс хамаарах, дахин шалгах хэсэг</b><ul>${imps.map(i => `<li>${esc(plain(i.element || ''))}${i.action ? ' → ' + esc(plain(i.action)) : ''} ${i.anchor && anchorKey(i.anchor) ? linkHtml({ anchor: i.anchor, category: 'report' }) : ''}</li>`).join('')}</ul></div>` : ''}
-        ${x.resolution_check ? `<div class="rchk"><b>Засагдсаныг шалгах:</b> ${esc(plain(x.resolution_check))}</div>` : ''}
+        ${x.why_it_matters ? `<p class="why"><b>Яагаад чухал вэ:</b> ${secLinks(plain(x.why_it_matters))}</p>` : ''}
+        ${imps.length ? `<div class="imp"><b>Үүнээс хамаарах, дахин шалгах хэсэг</b><ul>${imps.map(i => `<li>${secLinks(plain(i.element || ''))}${i.action ? ' → ' + secLinks(plain(i.action)) : ''} ${i.anchor && anchorKey(i.anchor) ? linkHtml({ anchor: i.anchor, category: 'report' }) : ''}</li>`).join('')}</ul></div>` : ''}
+        ${x.resolution_check ? `<div class="rchk"><b>Засагдсаныг шалгах:</b> ${secLinks(plain(x.resolution_check))}</div>` : ''}
         ${ev.length ? `<ul class="ev">${ev.map(e => `<li>${linkHtml(e) || (e.source ? `<code>${esc(e.source)}</code>` : '')} ${esc(e.detail || '')}</li>`).join('')}</ul>` : ''}
         ${x.suggested_text ? `<div class="sug"><b>Санал болгох найруулга</b>${esc(x.suggested_text)}</div>` : ''}
       </details>` : ''}
@@ -3387,6 +3430,7 @@ function highlight(text, quotes) {
 
 function renderAnnotated(f, issues) {
   const doc = current.doc;
+  buildSecMap(doc);
   const filt = x => (docFilter === 'ALL' || x.severity === docFilter) && (!modFilter || moduleOf(x) === modFilter);
   const byBlock = {}, general = [];
   const blockIds = new Set((doc?.blocks || []).map(b => b.id));
@@ -3548,6 +3592,7 @@ function bindJob() {
   $$('[data-filter]').forEach(b => b.onclick = () => { docFilter = b.dataset.filter; activeTab = 'doc'; renderJob(); if (b.classList.contains('cnt')) document.querySelector('.tabs')?.scrollIntoView({ behavior: 'smooth' }); });
   const oc = $('#onlyC'); if (oc) oc.onchange = () => { onlyCommented = oc.checked; renderJob(); };
   $$('.ref').forEach(r => r.onclick = () => focusIssue(r.dataset.issue));
+  $$('a.seclink').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); gotoSec(a.dataset.sec, +a.dataset.secrow || 0); });
   $$('[data-toc]').forEach(a => a.onclick = e => { e.preventDefault(); gotoBlock(a.dataset.toc); });
   // Нээсэн тэмдэглэлүүдийг дахин зурахад хадгална
   $$('details.cmt').forEach(d => d.addEventListener('toggle', () => { if (d.open) openIds.add(d.dataset.id); else openIds.delete(d.dataset.id); }));
