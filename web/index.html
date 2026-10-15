@@ -1368,7 +1368,7 @@ async function loadGdrive() {
       <li>«APIs & Services → Library» → <b>Google Drive API</b> → Enable.</li>
       <li>«OAuth consent screen» → User type: <b>Internal</b> → нэр оруулаад хадгална.</li>
       <li>«Credentials → Create credentials → OAuth client ID» → Application type: <b>Desktop app</b> → Client ID, Client secret-ийг доор хуулна.</li></ol></details>
-    <div class="ugrid" style="margin-top:8px"><input id="gdId" placeholder="Client ID (…apps.googleusercontent.com)" spellcheck="false"><input id="gdSecret" type="password" autocomplete="off" placeholder="Client secret"><button class="btn primary" id="gdStart">Google-ээр холбох</button></div>
+    <div class="ugrid" style="margin-top:8px"><input id="gdId" placeholder="Client ID (…apps.googleusercontent.com)" spellcheck="false"><input id="gdSecret" type="text" name="gd-client-secret" autocomplete="off" data-lpignore="true" spellcheck="false" placeholder="Client secret (GOCSPX-…)" style="-webkit-text-security:disc"><button class="btn primary" id="gdStart">Google-ээр холбох</button></div>
     <div id="gdStep2" class="hidden" style="margin-top:10px"><div class="sub">Нээгдсэн цонхонд дансаа сонгоод <b>Drive-ийг харах</b> эрхийг зөвшөөрнө. Дараа нь хуудас «холбогдож чадсангүй» гэж гарна — <b>энэ хэвийн</b>. Тэр цонхны хаягийн мөрөөс бүтэн хаягийг (http://127.0.0.1/?…) хуулж энд оруулна:</div>
       <div class="ugrid" style="margin-top:6px"><input id="gdBack" placeholder="http://127.0.0.1/?state=…&code=…" spellcheck="false"><button class="btn primary" id="gdFinish">Баталгаажуулах</button></div></div>
     <div class="sub" id="gdMsg" style="margin-top:6px"></div>`;

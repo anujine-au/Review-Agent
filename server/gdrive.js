@@ -50,9 +50,11 @@ const connected = () => status().connected;
 // 1-р алхам: зөвшөөрлийн хаяг (state + PKCE-г 15 минут санах ойд)
 const pending = new Map();
 function start(clientId, clientSecret) {
-  clientId = String(clientId || '').trim(); clientSecret = String(clientSecret || '').trim();
+  // Хуулахад орсон хоосон зай, мөр шилжилт, хашилтыг арилгана
+  clientId = String(clientId || '').replace(/[\s"']/g, ''); clientSecret = String(clientSecret || '').replace(/[\s"']/g, '');
   if (!/\.apps\.googleusercontent\.com$/.test(clientId)) throw new Error('Client ID буруу байна (…apps.googleusercontent.com гэж төгсөнө)');
   if (!clientSecret) throw new Error('Client secret-ийг оруулна уу');
+  if (!/^GOCSPX-[\w-]{20,}$/.test(clientSecret)) throw new Error(`Client secret буруу хуулагдсан бололтой (${clientSecret.length} тэмдэгт${clientSecret.startsWith('GOCSPX-') ? '' : ', «GOCSPX-»-ээр эхлээгүй'}). Зөв secret «GOCSPX-» гэж эхэлж, 35 орчим тэмдэгттэй. Хөтөч нууц үгээ автоматаар бөглөсөн эсэхийг шалгана уу`);
   const state = crypto.randomBytes(16).toString('hex'), verifier = crypto.randomBytes(32).toString('base64url');
   pending.set(state, { clientId, clientSecret, verifier, exp: Date.now() + 15 * 60000 });
   const q = new URLSearchParams({ client_id: clientId, redirect_uri: REDIRECT, response_type: 'code', scope: SCOPE, access_type: 'offline', prompt: 'consent', state,

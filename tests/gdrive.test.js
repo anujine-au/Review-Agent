@@ -23,6 +23,8 @@ global.fetch = async (url, opt = {}) => {
     const b = new URLSearchParams(opt.body);
     if (b.get('grant_type') === 'authorization_code') {
       assert.equal(b.get('code'), 'C0DE'); assert.ok(b.get('code_verifier'));
+      assert.equal(b.get('client_secret'), 'GOCSPX-abcdefghijklmnopqrstuvwxyz12');   // хоосон зай, хашилтгүй
+      assert.equal(b.get('client_id'), '123-abc.apps.googleusercontent.com');
       const idt = 'x.' + Buffer.from(JSON.stringify({ email: 'anujin.e@netgroup.mn' })).toString('base64url') + '.y';
       return json({ access_token: 'AT1', expires_in: 3600, refresh_token: 'RT-secret', scope: 'openid email https://www.googleapis.com/auth/drive.readonly', id_token: idt });
     }
@@ -44,7 +46,10 @@ test('normalize: Google линкээс файлын ID', () => {
 test('холбох → token шифрлэгдсэн, файлыг татах хаяг → салгах', async () => {
   assert.equal(GD.connected(), false);
   assert.throws(() => GD.start('bad', 's'), /Client ID/);
-  const u = new URL(GD.start('123-abc.apps.googleusercontent.com', 'SECRET'));
+  assert.throws(() => GD.start('123-abc.apps.googleusercontent.com', 'MyLoginPassw0rd'), /буруу хуулагдсан.*GOCSPX-»-ээр эхлээгүй/);
+  assert.throws(() => GD.start('123-abc.apps.googleusercontent.com', 'MyLoginPassw0rd'), e => !e.message.includes('MyLogin'));
+  const SECRET = 'GOCSPX-abcdefghijklmnopqrstuvwxyz12';
+  const u = new URL(GD.start(' 123-abc.apps.googleusercontent.com\n', ` "${SECRET}" `));
   assert.equal(u.searchParams.get('redirect_uri'), 'http://127.0.0.1');
   assert.match(u.searchParams.get('scope'), /drive\.readonly/);
   assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
@@ -52,7 +57,7 @@ test('холбох → token шифрлэгдсэн, файлыг татах х�
   const st = await GD.finish(`http://127.0.0.1/?state=${u.searchParams.get('state')}&code=C0DE&scope=x`, 'admin');
   assert.deepEqual([st.connected, st.email, st.by], [true, 'anujin.e@netgroup.mn', 'admin']);
   const raw = fs.readFileSync(path.join(TMP, 'gdrive.json'), 'utf8');
-  assert.ok(!raw.includes('RT-secret') && !raw.includes('SECRET'), 'token, secret ил хадгалагдахгүй');
+  assert.ok(!raw.includes('RT-secret') && !raw.includes(SECRET), 'token, secret ил хадгалагдахгүй');
   // state нэг удаа л хэрэглэгдэнэ
   await assert.rejects(GD.finish(`http://127.0.0.1/?state=${u.searchParams.get('state')}&code=C0DE`, 'admin'), /Хугацаа дууссан/);
 
