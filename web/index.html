@@ -2609,6 +2609,13 @@ function showDone(title, text, items) {
   ov.querySelector('[data-doneok]').focus();
 }
 // Илгээсэн файлууд (сүүлийн хувилбар) — AI шалгалт дуусах хүртэл «хадгалагдаж байна», дараа нь татах товчтой
+// Линкээр оруулсан файл: эх линк рүү очих (шинэ цонхонд). Хуулбар нь «⬇ Татах»-аар тухайн агшинд татсан хэлбэрээр
+function srcLinkHtml(f, btn) {
+  if (f.source !== 'link') return '';
+  const ok = /^https:\/\//i.test(String(f.url || ''));
+  const t = `Эх линк${f.fetched_at ? ' · татсан: ' + fmtDate(f.fetched_at) : ''} — одоогийн агуулга татсан хуулбараас өөр байж болно`;
+  return ok ? ` <a class="${btn ? 'btn sm ghost' : 'sub'}" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="${esc(t)}">↗ ${esc(f.host || 'Эх линк')}</a>` : ` <span class="sub">🔗 ${esc(f.host || 'линк')}</span>`;
+}
 function sentFilesHtml() {
   const d = current.wf;
   if (!d || !d.versions || !d.versions.length) return '';
@@ -2616,7 +2623,7 @@ function sentFilesHtml() {
   if (!v.files || !v.files.length) return '';
   return `<div class="card pad" style="margin-bottom:12px"><h3 style="margin:0 0 8px">Илгээсэн файлууд — v${v.version}</h3>
     <div class="sub" style="margin-bottom:8px">${esc(fmtDate(v.submitted_at || v.created))}${v.submitted_by ? ' · ' + esc(String(v.submitted_by).replace(/^name:/, '')) : ''}</div>
-    <table class="utable"><tbody>${v.files.map(f => `<tr><td>${esc(ORIG_CAT[f.cat] || f.cat)}</td><td><b>v${v.version}_${esc(f.name)}</b>${f.source === 'link' ? ` <span class="sub">🔗 ${esc(f.host || '')}</span>` : ''}</td>
+    <table class="utable"><tbody>${v.files.map(f => `<tr><td>${esc(ORIG_CAT[f.cat] || f.cat)}</td><td><b>v${v.version}_${esc(f.name)}</b>${srcLinkHtml(f)}</td>
       <td style="text-align:right">${f.pending ? '<span class="sub">хадгалагдаж байна…</span>' : `<button class="btn sm" data-ofile="${esc(f.name)}" data-ocat="${esc(f.cat)}" data-ojob="${esc(v.job)}">⬇ Татах</button>`}</td></tr>`).join('')}</tbody></table></div>`;
 }
 // Аудиторын талаас: захирлын хариу ирэх хүртэл «Хянагдаж байна»
@@ -2635,7 +2642,7 @@ function timelineHtml() {
         ${internal && v.verdict ? `<span class="vm"> · ${esc(VERDICT_MN[v.verdict] || v.verdict)} · Ноцтой ${v.r1 ?? 0}</span>` : ''}
         ${internal && v.job !== current.id ? ` <a href="#job/${esc(v.job)}" class="vm">нээх</a>` : ''}</div>
       ${v.note ? `<div class="vm" style="margin-top:4px"><b>Юу зассан:</b> ${esc(v.note)}</div>` : ''}
-      <div class="vfiles">${(v.files || []).map(f => `<div><span class="sub">${esc(ORIG_CAT[f.cat] || f.cat)}:</span> <b>v${v.version}_${esc(f.name)}</b>${f.source === 'link' ? ` <span class="sub">🔗 ${esc(f.host || '')}</span>` : ''}
+      <div class="vfiles">${(v.files || []).map(f => `<div><span class="sub">${esc(ORIG_CAT[f.cat] || f.cat)}:</span> <b>v${v.version}_${esc(f.name)}</b>${srcLinkHtml(f)}
         ${f.pending ? '<span class="sub">хадгалагдаж байна…</span>' : `<button class="btn sm ghost" data-ofile="${esc(f.name)}" data-ocat="${esc(f.cat)}" data-ojob="${esc(v.job)}">⬇ Татах</button>`}</div>`).join('') || '<span class="sub">Эх файл хадгалагдаагүй</span>'}</div>
     </div></div>`).join('')}</div>
     ${internal && d.versions.length > 1 ? `<div style="margin-top:8px"><button class="btn sm" data-wf="diff">Сүүлийн 2 хувилбарын ялгаа (v${d.versions.length - 1} → v${d.versions.length})</button></div><div id="diffBox"></div>` : ''}`;
@@ -2895,7 +2902,7 @@ function renderOriginals() {
     html += `<div class="card tbl" style="margin-top:10px"><div style="padding:10px 12px;font-weight:600">v${v.version || v.cycle} · ${(v.version || v.cycle) === 1 ? 'Анхны илгээлт' : 'Засварласан хувилбар'}${v.created ? ` <span class="sub">· ${esc(fmtDate(v.created))}</span>` : ''}${v.job === current.id ? ' <span class="obadge">энэ хуудас</span>' : ''}</div>`;
     html += v.files.length ? `<table><thead><tr><th>Ангилал</th><th>Файл</th><th>Хэмжээ</th><th>Эх үүсвэр</th><th></th></tr></thead><tbody>${v.files.map(f => `<tr>
         <td>${esc(ORIG_CAT[f.cat] || f.cat)}</td><td><b>v${v.version || v.cycle}_${esc(f.name)}</b><div class="sub" title="SHA-256 — файл өөрчлөгдөөгүйг батална" style="font-family:Consolas,monospace;font-size:10px">${esc(String(f.sha256 || '').slice(0, 16))}…</div></td>
-        <td class="num">${kb(f.size || 0)}</td><td>${f.source === 'link' ? `🔗 ${esc(f.host || 'линк')}` : f.source === 'backfill'
+        <td class="num">${kb(f.size || 0)}</td><td>${f.source === 'link' ? srcLinkHtml(f, true) : f.source === 'backfill'
           ? (f.verified ? '<span title="Downloads-ийн хуулбарыг AI бүртгэлийн SHA-256-тай тулгаж баталгаажуулсан">Нөхсөн · ✓ баталгаажсан</span>' : '<span title="Downloads-ийн хуулбараас нөхсөн; тухайн review-д оруулсан файлтай ижил эсэхийг батлах бүртгэл алга">Нөхсөн · ⚠ hash баталгаажаагүй</span>')
           : 'Оруулсан'}</td>
         <td><button class="btn sm" data-ofile="${esc(f.name)}" data-ocat="${esc(f.cat)}" data-ojob="${esc(v.job)}">⬇ Татах</button></td></tr>`).join('')}</tbody></table>`

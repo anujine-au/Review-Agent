@@ -1042,7 +1042,11 @@ async function handle(req, res) {
         return { version: i + 1, job: x, created: jm2.created, submitted_at: jm2.submitted_at || null, submitted_by: jm2.submitted_by || jm2.created_by || null,
           note: jm2.resubmit_note || '',
           // AI шалгалт дуусах хүртэл эх файл originals/-д шилжээгүй байдаг — илгээсэн жагсаалтыг job.json-оос харуулна
-          files: !ORIG.list(jobDir(x)).length ? (jm2.files || []).filter(f => !f.auto).map(f => ({ cat: f.category, name: f.name, size: f.size, pending: true })) : ORIG.list(jobDir(x)).map(f => ({ cat: f.cat, name: f.name, sha256: f.sha256, source: f.source, host: f.host })),
+          // Линкээр оруулсан бол эх линк, татсан огноо (тухайн агшны хуулбар нь v<n>_ файл)
+          files: !ORIG.list(jobDir(x)).length
+            ? (jm2.files || []).filter(f => !f.auto).map(f => { const lk = (jm2.link_sources || {})[`${f.category}/${f.name}`]; const lo = lk && typeof lk === 'object' ? lk : null;
+              return { cat: f.category, name: f.name, size: f.size, pending: true, ...(lk ? { source: 'link', host: lo ? lo.host : lk, url: lo?.url, fetched_at: lo?.fetched_at } : {}) }; })
+            : ORIG.list(jobDir(x)).map(f => ({ cat: f.cat, name: f.name, sha256: f.sha256, source: f.source, host: f.host, url: f.url, fetched_at: f.fetched_at })),
           released: released.includes(i + 1), ...(internal ? { ai: WF.aiStatus(x), verdict: sum.verdict || null, r1: sum.r1, r2: sum.r2, r3: sum.r3, r4: sum.r4 } : {}) };
       });
       return sendJson(res, 200, { root: rootId, workflow: (({ state, label, version, history }) => ({ state, label, version, history: internal ? history : undefined }))(WF.stateOf(rootId)), versions: list });
