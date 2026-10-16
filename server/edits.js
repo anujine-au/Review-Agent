@@ -17,6 +17,7 @@ const ORIG = require('./originals');
 const { readZip } = require('./extract');
 const { zip } = require('./export');
 const { normMap, cleanQuote } = require('./verify');
+const SUG = require('./suggest');
 
 const jdir = id => path.join(C.PATHS.jobs, id);
 const edDir = (rootId, n) => path.join(jdir(rootId), 'edits', `v${n}`);
@@ -193,23 +194,27 @@ function state(rootId, n) {
   const fb = feedback(rootId, n);
   if (!fb) return { error: 'Энэ хувилбарт feedback илгээгдээгүй байна', code: 404 };
   const base = baseOf(fb), log = readLog(rootId, n);
-  const items = (fb.items || []).filter(x => x.quote).map(x => ({ id: x.id, old: x.quote, suggested: suggestionOf(rootId, fb, x) }));
+  // Ишлэлгүй ч байршилтай санал — AI-аар засах хэсгийг сонгуулж болно
+  const items = (fb.items || []).filter(x => x.quote || x.anchor).map(x => ({ id: x.id, old: x.quote || '', suggested: x.quote ? suggestionOf(rootId, fb, x) : '' }));
   const applied = log.edits.filter(e => e.status === 'applied');
-  return { version: n, available: !base.reason, reason: base.reason || '', base_name: base.name || '', items, edits: log.edits,
+  return { version: n, available: !base.reason, reason: base.reason || '', base_name: base.name || '', items, ai: SUG.list(rootId, n), edits: log.edits,
     applied: applied.length, conflicts: applied.filter(e => e.result && e.result !== 'ok').length, updated_at: log.updated_at || null };
 }
 
-function prepare(rootId, n, rvId, newText) {
+function prepare(rootId, n, rvId, newText, oldText) {
   const fb = feedback(rootId, n);
   if (!fb) return { error: 'Энэ хувилбарт feedback илгээгдээгүй байна', code: 404 };
   const item = (fb.items || []).find(x => x.id === rvId);
   if (!item) return { error: 'Санал олдсонгүй', code: 404 };
-  if (!item.quote) return { error: 'Энэ саналд тайлангаас иш татсан хэсэг алга — шууд засах боломжгүй', code: 409 };
+  // Солих хэсэг: AI-ийн сонгосон (эсвэл аудиторын заасан) хэсэг, үгүй бол ишлэл
+  const old = String(oldText || item.quote || '').replace(/\s+/g, ' ').trim();
+  if (!old) return { error: 'Энэ саналд тайлангаас иш татсан хэсэг алга — «✨ AI-аар найруулга» дарж солих хэсгийг сонгуулна уу', code: 409 };
+  if (old.length > MAX_TEXT) return { error: `Солих хэсэг хэт урт (${MAX_TEXT} тэмдэгтээс ихгүй)`, code: 400 };
   const base = baseOf(fb);
   if (base.reason) return { error: base.reason, code: 409 };
   const text = String(newText ?? '').replace(/\r\n?/g, '\n').replace(/\n+/g, ' ');
   if (text.length > MAX_TEXT) return { error: `Текст хэт урт (${MAX_TEXT} тэмдэгтээс ихгүй)`, code: 400 };
-  return { fb, item, base, text, log: readLog(rootId, n) };
+  return { fb, item, base, text, old, log: readLog(rootId, n) };
 }
 const ERR = {
   not_found: 'Иш татсан хэсэг одоогийн тайлангаас олдсонгүй (өмнөх засвараар өөрчлөгдсөн эсвэл ишлэл тайлантай яг таарахгүй байна). Эх файлдаа гараар засна уу.',
@@ -218,22 +223,22 @@ const ERR = {
 };
 
 /** Урьдчилан харах: тухайн догол мөр засварын өмнө / дараа */
-function preview(rootId, n, rvId, newText) {
-  const p = prepare(rootId, n, rvId, newText);
+function preview(rootId, n, rvId, newText, oldText) {
+  const p = prepare(rootId, n, rvId, newText, oldText);
   if (p.error) return p;
   const cur = build(fs.readFileSync(p.base.file), p.log.edits);
-  const r = applyOne(cur.xml, { old: p.item.quote, new: p.text, anchor: p.item.anchor });
+  const r = applyOne(cur.xml, { old: p.old, new: p.text, anchor: p.item.anchor });
   if (r.error) return { error: ERR[r.error] || r.error, code: 409 };
   return { ok: true, block: r.id, before: r.before, after: r.after };
 }
 
 /** Засвар хэрэглэх (зөвшөөрөх) */
-function apply(rootId, n, rvId, newText, by) {
-  const p = prepare(rootId, n, rvId, newText);
+function apply(rootId, n, rvId, newText, by, oldText) {
+  const p = prepare(rootId, n, rvId, newText, oldText);
   if (p.error) return p;
-  if (cleanQuote(p.text) === cleanQuote(p.item.quote)) return { error: 'Шинэ текст хуучинтайгаа ижил байна', code: 400 };
+  if (cleanQuote(p.text) === cleanQuote(p.old)) return { error: 'Шинэ текст хуучинтайгаа ижил байна', code: 400 };
   const seq = (p.log.edits.reduce((s, e) => Math.max(s, e.seq), 0) || 0) + 1;
-  const edit = { seq, rv_id: rvId, old: p.item.quote, new: p.text, anchor: p.item.anchor || null, by, at: C.nowIso(), status: 'applied' };
+  const edit = { seq, rv_id: rvId, old: p.old, new: p.text, anchor: p.item.anchor || null, by, at: C.nowIso(), status: 'applied' };
   // Эхлээд одоогийн хувилбар дээр хэрэгжих эсэхийг шалгана
   const cur = build(fs.readFileSync(p.base.file), p.log.edits);
   const r = applyOne(cur.xml, edit);

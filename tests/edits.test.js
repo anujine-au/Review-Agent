@@ -56,6 +56,7 @@ function makeJob({ report = 'Тайлан.docx', buf = DOCX, state = 'RETURNED' 
   fs.writeFileSync(path.join(out, 'review_findings.json'), JSON.stringify({ schema_version: 3, issues: ITEMS.map(x => x.id === 'RV-2' ? { ...x, suggested_text: 'Хоёрдугаар догол' } : x) }));
   fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify({ status: 'done' }));
   fs.writeFileSync(path.join(d, 'mask_map.json'), JSON.stringify({ '[PERSON-0001]': 'Бат-Эрдэнэ' }));
+  if (/\.docx$/.test(report)) fs.writeFileSync(path.join(d, 'doc.json'), JSON.stringify({ file: report, blocks: convertDocx(buf).blocks }));
   fs.mkdirSync(path.join(d, 'originals', 'report'), { recursive: true });
   fs.writeFileSync(path.join(d, 'originals', 'report', report), buf);
   fs.writeFileSync(path.join(d, 'originals', 'index.json'), JSON.stringify([{ cat: 'report', name: report, size: buf.length, sha256: sha(buf), source: 'upload' }]));
@@ -207,4 +208,38 @@ test('Засварласан хувилбарт вэб засварыг тайл
   assert.match(textOf(fs.readFileSync(f)), /Зээлийн тайлан шинэ/);
   // анхны (root) job дээр — илгээгдсэн тул 409
   assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${J}/files-edits`, {})).status, 409);
+});
+
+/* ---------- AI найруулга (server/suggest.js) — Claude-гүйгээр ---------- */
+test('suggest: тооны эх сурвалж, хариу задлах, засах нэгж', () => {
+  const SUG = require(path.join(ROOT, 'server', 'suggest'));
+  const doc = { blocks: [{ id: 'P1', kind: 'p', text: 'Нийт 31 зөвлөмж, 2026.08.31' }, { id: 'T1', kind: 'table', rows: [['A', 'Нийт 31'], ['B', 'x']] }] };
+  assert.deepEqual(SUG.numberSources('Нийт 18 зөвлөмж, 31 биш, [PERSON-0001], 99', 'Нийт 31', doc, { issue: 'их биед 18 байна' }),
+    [{ n: '18', src: 'comment' }, { n: '99', src: 'none' }]);
+  assert.deepEqual(SUG.parseReply('```json\n{"fixable": false, "reason": "x"}\n```'), { fixable: false, reason: 'x' });
+  assert.equal(SUG.parseReply('no json'), null);
+  const t = SUG.targetOf(doc, 'T1R2');
+  assert.deepEqual(t.targets.map(u => u.id), ['T1R2']);
+  assert.deepEqual(SUG.targetOf(doc, 'T1').targets.map(u => u.id), ['T1R1', 'T1R2']);
+  assert.equal(SUG.targetOf(doc, null), null);
+  assert.match(SUG.buildPrompt({ title: 't', issue: 'i', required_action: 'a', quote: '', anchor: 'P1' }, SUG.targetOf(doc, 'P1')), /<<P1>> Нийт 31 зөвлөмж/);
+});
+
+test('AI сонгосон хэсгээр (ишлэлээс өргөн) солих; AI олдохгүй бол ойлгомжтой алдаа', async () => {
+  const K = makeJob();
+  // ишлэл «тайлан нэг» — AI бүтэн догол мөрийг сонгосон гэж үзье
+  const pv = await call(tokens.aud1, 'POST', `${base(K)}/preview`, { rv_id: 'RV-1', old: 'Зээлийн тайлан нэг & хавсралт', text: 'Зээлийн тайлан, хавсралт' });
+  assert.equal(pv.status, 200, String(pv.buf));
+  assert.equal(pv.json.after, 'Зээлийн тайлан, хавсралт');
+  const ap = await call(tokens.aud1, 'POST', base(K), { rv_id: 'RV-1', old: 'Зээлийн тайлан нэг & хавсралт', text: 'Зээлийн тайлан, хавсралт' });
+  assert.equal(ap.status, 200, String(ap.buf));
+  assert.equal(ap.json.edit.old, 'Зээлийн тайлан нэг & хавсралт');
+  assert.match(textOf((await call(tokens.aud1, 'GET', `${base(K)}/docx`)).buf), /\[P1\] Зээлийн тайлан, хавсралт/);
+  // тестийн орчинд Claude байхгүй → 502, юу ч хадгалахгүй
+  const sg = await call(tokens.aud1, 'POST', `${base(K)}/suggest`, { rv_id: 'RV-2' });
+  assert.equal(sg.status, 502);
+  assert.deepEqual((await call(tokens.aud1, 'GET', base(K))).json.ai, {});
+  // багийн бус → 404, захирал → 403
+  assert.equal((await call(tokens.aud2, 'POST', `${base(K)}/suggest`, { rv_id: 'RV-2' })).status, 404);
+  assert.equal((await call(tokens.cae1, 'POST', `${base(K)}/suggest`, { rv_id: 'RV-2' })).status, 403);
 });

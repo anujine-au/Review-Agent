@@ -2709,7 +2709,8 @@ function fbCheckBtn(x, can) {
 }
 /* ---------- Тайлан дээр шууд засах (server/edits.js) — эх файл өөрчлөгдөхгүй, засварласан хуулбар үүснэ ---------- */
 // fxDraft: санал бүрийн бичиж буй шинэ текст; fxPrev: урьдчилан харсан догол мөр (өмнө / дараа)
-const fxDraft = {}, fxPrev = {};
+// fxBusy / fxErr: AI найруулга бэлтгэж буй, алдаа гарсан санал
+const fxDraft = {}, fxPrev = {}, fxBusy = {}, fxErr = {};
 // Догол мөрийн өөрчлөгдсөн хэсгийг тодруулна (ижил эхлэл, төгсгөлийг хасаад)
 function fxDiff(before, after) {
   before = String(before || ''); after = String(after || '');
@@ -2720,7 +2721,7 @@ function fxDiff(before, after) {
 }
 function fxHtml(x) {
   const fb = current.wf?.fb?.[current.wf.fbSel], ed = fb?.ed;
-  if (!ed || !ed.available || !x.quote) return '';
+  if (!ed || !ed.available) return '';
   const it = (ed.items || []).find(i => i.id === x.id); if (!it) return '';
   const can = x._fbCan, done = (ed.edits || []).filter(e => e.rv_id === x.id && e.status === 'applied');
   if (done.length) return done.map(e => `<div class="fx done"><b>✓ Тайланд засварласан${e.block ? ' · ' + esc(e.block) : ''}</b>
@@ -2728,14 +2729,25 @@ function fxHtml(x) {
       <div class="para">${fxDiff(e.before || e.old, e.after || e.new)}</div>
       <div class="row"><span class="sub">${esc(String(e.by || '').replace(/^name:/, ''))} · ${esc(fmtDate(e.at))}</span><span class="spacer"></span>${can ? `<button class="btn sm" data-fxrev="${e.seq}" title="Тайланг энэ засвараас өмнөх байдалд нь буцаана">↶ Буцаах</button>` : ''}</div></div>`).join('');
   if (!can) return '';
-  const pv = fxPrev[x.id], text = fxDraft[x.id] ?? (it.suggested || it.old);
-  return `<div class="fx"><b>Тайланд шууд засах</b>
-    <div class="old">Одоогийн: «${esc(it.old)}»</div>
-    <div class="sub" style="margin-top:4px">${it.suggested ? 'Санал болгох найруулга — шаардлагатай бол засаад зөвшөөрнө:' : 'Энэ хэсгийг юугаар солихоо бичнэ:'}</div>
+  // AI найруулга (server/suggest.js): солих хэсгийг (догол мөр / нүд) өөрөө сонгоно; эс бөгөөс ишлэлийг солино
+  const ai = ed.ai?.[x.id], fix = ai && ai.fixable ? ai : null, pv = fxPrev[x.id], busy = fxBusy[x.id];
+  const old = fix ? fix.old : it.old;
+  const aiBtn = `<button class="btn sm${fix || it.suggested ? '' : ' primary'}" data-fxai="${esc(x.id)}"${busy ? ' disabled' : ''}>${busy ? '⏳ AI найруулга бэлтгэж байна… (20–60 сек)' : ai ? '↻ AI-аар дахин санал болгох' : '✨ AI-аар найруулга санал болгох'}</button>`;
+  let body = '';
+  if (ai && !ai.fixable) body += `<div class="warn">AI: текст солиод засагдахгүй — ${esc(ai.reason)}</div>`;
+  if (fxErr[x.id]) body += `<div class="err">${esc(fxErr[x.id])}</div>`;
+  if (old) {
+    const text = fxDraft[x.id] ?? (fix ? fix.new : (it.suggested || it.old));
+    body += `<div class="old">Солих хэсэг${fix && fix.block ? ` (${esc(fix.block)})` : ''}: «${esc(old)}»</div>
+    ${fix && fix.note ? `<div class="sub">AI: ${esc(fix.note)}</div>` : ''}
+    ${fix && (fix.numbers || []).length ? `<div class="${fix.numbers.some(m => m.src === 'none') ? 'err' : 'warn'}">⚠ Шинэ тоо — тайлантай тулгаж шалгана уу: ${fix.numbers.map(m => `<b>${esc(m.n)}</b> (${m.src === 'report' ? 'тайланд бий' : m.src === 'comment' ? 'захирлын саналд дурдсан' : 'эх сурвалж олдсонгүй'})`).join(', ')}</div>` : ''}
+    <div class="sub" style="margin-top:4px">${fix || it.suggested ? 'Санал болгох найруулга — шаардлагатай бол засаад зөвшөөрнө:' : 'Юугаар солихоо бичнэ, эсвэл AI-аар найруулга санал болгуулна:'}</div>
     <textarea data-fxtext="${esc(x.id)}" aria-label="Шинэ текст">${esc(text)}</textarea>
     ${pv ? (pv.error ? `<div class="err">${esc(pv.error)}</div>` : `<div class="sub" style="margin-top:6px">Тайланд ингэж өөрчлөгдөнө${pv.block ? ` (${esc(pv.block)})` : ''}:</div><div class="para">${fxDiff(pv.before, pv.after)}</div>`) : ''}
     <div class="row">${pv && !pv.error ? `<button class="btn sm primary" data-fxok="${esc(x.id)}">✓ Зөвшөөрөх — тайланд оруулах</button><button class="btn sm" data-fxno="${esc(x.id)}">Болих</button>`
-      : `<button class="btn sm" data-fxprev="${esc(x.id)}">Тайланд хэрхэн өөрчлөгдөхийг харах</button>`}</div></div>`;
+      : `<button class="btn sm" data-fxprev="${esc(x.id)}">Тайланд хэрхэн өөрчлөгдөхийг харах</button>${aiBtn}`}</div>`;
+  } else body += `<div class="sub">Энэ саналд иш татсан хэсэг алга — AI тайлангийн холбогдох хэсгээс солих хэсгийг сонгоно.</div><div class="row">${aiBtn}</div>`;
+  return `<div class="fx"><b>Тайланд шууд засах</b>${body}</div>`;
 }
 function fxBarHtml(fb) {
   const ed = fb.ed; if (!ed) return '';
@@ -2911,6 +2923,19 @@ function bindWf() {
   const fxFb = () => current.wf?.fb?.[current.wf.fbSel];
   const fxKeep = el => { const c = el.closest('details.cmt'); if (c && c.open) openIds.add(c.dataset.id); };
   const fxUrl = (fb, sub = '') => `/api/jobs/${current.id}/feedback/${fb.version}/edits${sub}`;
+  // AI сонгосон солих хэсэг (байхгүй бол сервер ишлэлийг ашиглана)
+  const fxOld = (fb, iid) => { const a = fb.ed?.ai?.[iid]; return a && a.fixable ? a.old : undefined; };
+  $$('[data-fxai]').forEach(b => b.onclick = async e => {
+    e.preventDefault(); const iid = b.dataset.fxai, fb = fxFb(); if (!fb) return;
+    const t = document.querySelector(`[data-fxtext="${CSS.escape(iid)}"]`);
+    if (t && fxDraft[iid] !== undefined && !confirm('Таны бичсэн текстийг AI-ийн шинэ саналаар солих уу?')) return;
+    fxBusy[iid] = true; delete fxErr[iid]; fxKeep(b); renderJob();
+    try {
+      const r = await api(fxUrl(fb, '/suggest'), { method: 'POST', body: JSON.stringify({ rv_id: iid }) });
+      fb.ed.ai = { ...(fb.ed.ai || {}), [iid]: r.suggestion }; delete fxDraft[iid]; delete fxPrev[iid];
+    } catch (err) { if (err.message !== 'unauthorized') fxErr[iid] = 'AI найруулга бэлтгэж чадсангүй: ' + err.message; }
+    finally { delete fxBusy[iid]; renderJob(); }
+  });
   $$('[data-fxtext]').forEach(t => t.oninput = () => {
     const iid = t.dataset.fxtext; fxDraft[iid] = t.value;
     // Урьдчилан харсны дараа текст өөрчлөгдвөл дахин харуулна (харсан зүйлээс өөрийг оруулахгүй)
@@ -2920,7 +2945,7 @@ function bindWf() {
     e.preventDefault(); const iid = b.dataset.fxprev, fb = fxFb(); if (!fb) return;
     const t = document.querySelector(`[data-fxtext="${CSS.escape(iid)}"]`); if (t) fxDraft[iid] = t.value;
     b.disabled = true;
-    try { fxPrev[iid] = await api(fxUrl(fb, '/preview'), { method: 'POST', body: JSON.stringify({ rv_id: iid, text: fxDraft[iid] }) }); }
+    try { fxPrev[iid] = await api(fxUrl(fb, '/preview'), { method: 'POST', body: JSON.stringify({ rv_id: iid, text: fxDraft[iid], old: fxOld(fb, iid) }) }); }
     catch (err) { if (err.message === 'unauthorized') return; fxPrev[iid] = { error: err.message }; }
     fxKeep(b); renderJob();
   });
@@ -2929,7 +2954,7 @@ function bindWf() {
     e.preventDefault(); const iid = b.dataset.fxok, fb = fxFb(); if (!fb) return;
     b.disabled = true;
     try {
-      const r = await api(fxUrl(fb), { method: 'POST', body: JSON.stringify({ rv_id: iid, text: fxDraft[iid] }) });
+      const r = await api(fxUrl(fb), { method: 'POST', body: JSON.stringify({ rv_id: iid, text: fxDraft[iid], old: fxOld(fb, iid) }) });
       fb.ed = r.state; fb.progress = r.progress || fb.progress; delete fxPrev[iid]; delete fxDraft[iid]; fxKeep(b); renderJob();
     } catch (err) { b.disabled = false; if (err.message !== 'unauthorized') { fxPrev[iid] = { error: err.message }; fxKeep(b); renderJob(); } }
   });

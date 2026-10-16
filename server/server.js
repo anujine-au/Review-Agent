@@ -49,6 +49,7 @@ const LIB = require('./library');
 const FUP = require('./followup');
 const MAN = require('./manual');
 const ED = require('./edits');
+const SUG = require('./suggest');
 // Шийдвэр / илгээлт / эхлүүлэлтийг hash-chain логт (SP-118-04/01 §6 Decision, Submission лог)
 const auditLog = (action, fields) => { try { AL.append('audit', { action, ...fields }); } catch (e) { console.error('audit log:', e.message); } };
 WF.setAudit(auditLog);   // төлөвийн шилжилт бүр logs/audit.jsonl-д
@@ -1040,7 +1041,7 @@ async function handle(req, res) {
     }
     // Тайлан дээр шууд засах (server/edits.js): санал бүрийн ишлэлийг .docx-д солих, буцаах. Эх файл өөрчлөгдөхгүй.
     // Харах — job-ийг харах эрхтэй хүн бүр; засах / буцаах — зөвхөн багийн гишүүн, RETURNED төлөвт, сүүлийн feedback дээр.
-    const edm = rest.match(/^\/feedback\/(\d{1,3})\/edits(?:\/(preview|docx|all|\d{1,5}))?(?:\/(revert))?$/);
+    const edm = rest.match(/^\/feedback\/(\d{1,3})\/edits(?:\/(preview|suggest|docx|all|\d{1,5}))?(?:\/(revert))?$/);
     if (edm) {
       const n = Number(edm[1]), sub = edm[2] || '', rel = WF.releasedVersions(rootId);
       if (!rel.includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
@@ -1059,12 +1060,21 @@ async function handle(req, res) {
       const body = await readJsonBody(req);
       const pf = path.join(jobDir(rootId), 'feedback', `progress_v${n}.json`);
       if (sub === 'preview') {
-        const r = ED.preview(rootId, n, String(body.rv_id || ''), body.text);
+        const r = ED.preview(rootId, n, String(body.rv_id || ''), body.text, body.old);
         return r.error ? sendErr(res, r.code || 409, r.error) : sendJson(res, 200, r);
+      }
+      // AI-аар найруулга бэлтгэх (нэг санал, далдалсан бичвэрээр, хэрэгсэлгүй)
+      if (sub === 'suggest') {
+        const rv = String(body.rv_id || '');
+        const r = await SUG.suggest(rootId, n, rv, who);
+        if (r.error) return sendErr(res, r.code || 502, r.error);
+        auditLog('report.edit.suggest', { job: rootId, version: n, rv_id: rv, fixable: r.suggestion.fixable, ai_run_id: r.suggestion.ai_run_id, user: who, role: session.role });
+        log('REPORT_SUGGEST', `${rootId} v${n} ${rv} fixable=${r.suggestion.fixable}`);
+        return sendJson(res, 200, r);
       }
       if (!sub) {
         const rv = String(body.rv_id || '');
-        const r = ED.apply(rootId, n, rv, body.text, who);
+        const r = ED.apply(rootId, n, rv, body.text, who, body.old);
         if (r.error) return sendErr(res, r.code || 409, r.error);
         // Засвар хийсэн саналыг автоматаар «Зассан» гэж тэмдэглэнэ (буцаавал автоматаар хасагдана)
         const pr = C.readJson(pf) || {};
