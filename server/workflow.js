@@ -131,7 +131,7 @@ function fbItem(it, sv, dec) {
   const edited = decOf(dec) === 'EDITED' && dec.edited_text;
   return { id: it.id, severity: S.normSeverity(it.severity, sv), module: S.moduleOf(it), rule: it.rule || '', confidence: it.confidence || '',
     title: it.title || '', issue: it.issue || '', why_it_matters: it.why_it_matters || '', required_action: edited ? dec.edited_text : (it.required_action || ''),
-    edited: !!edited, anchor: it.anchor ?? null, quote: it.quote || '', source: it.source || '', origin: it.origin || 'llm', resolution_check: it.resolution_check || '' };
+    edited: !!edited, anchor: it.anchor ?? null, quote: it.quote || '', suggested_text: it.suggested_text || '', source: it.source || '', origin: it.origin || 'llm', resolution_check: it.resolution_check || '' };
 }
 
 /**

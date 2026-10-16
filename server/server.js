@@ -48,6 +48,7 @@ const AL = require('./ailog');
 const LIB = require('./library');
 const FUP = require('./followup');
 const MAN = require('./manual');
+const ED = require('./edits');
 // Шийдвэр / илгээлт / эхлүүлэлтийг hash-chain логт (SP-118-04/01 §6 Decision, Submission лог)
 const auditLog = (action, fields) => { try { AL.append('audit', { action, ...fields }); } catch (e) { console.error('audit log:', e.message); } };
 WF.setAudit(auditLog);   // төлөвийн шилжилт бүр logs/audit.jsonl-д
@@ -816,6 +817,21 @@ async function handle(req, res) {
       return sendJson(res, 201, { ok: true, name: got.name, size: got.size });
     }
 
+    // Вэб дээр засварласан тайланг (server/edits.js) засварласан хувилбарын тайлан болгон оруулах
+    if (m === 'POST' && rest === '/files-edits') {
+      if (!canEdit) return deny();
+      if (status !== 'draft') return sendErr(res, 409, 'Review эхэлсэн тул файл нэмэх боломжгүй');
+      const job = C.readJson(path.join(dir, 'job.json')) || {};
+      if (!job.parent_id) return sendErr(res, 400, 'Зөвхөн засварласан хувилбарт ашиглана');
+      const w = ED.latestWorking(rootId);
+      if (!w) return sendErr(res, 404, 'Вэб дээр хийсэн засвар алга');
+      const name = safeName(w.name);
+      fs.mkdirSync(path.join(dir, 'input', 'report'), { recursive: true });
+      fs.copyFileSync(w.path, path.join(dir, 'input', 'report', name));
+      auditLog('report.edit.use', { job: id, root: rootId, from_version: w.version, applied: w.applied, user: who, role: session.role });
+      return sendJson(res, 201, { ok: true, name, size: fs.statSync(w.path).size });
+    }
+
     // Хянуулах (DRAFT → SUBMITTED, v1) / засвар илгээх (RETURNED → RESUBMITTED, v{n+1}). /start нь хуучин UI-д зориулсан нэр.
     if (m === 'POST' && (rest === '/start' || rest === '/submit' || rest === '/resubmit')) {
       if (!canEdit) return deny();
@@ -1022,8 +1038,55 @@ async function handle(req, res) {
       auditLog('feedback.progress', { job: rootId, version: n, rv_id: fpm[2], done: !!body.done, user: who, role: session.role });
       return sendJson(res, 200, { ok: true, progress: all });
     }
+    // Тайлан дээр шууд засах (server/edits.js): санал бүрийн ишлэлийг .docx-д солих, буцаах. Эх файл өөрчлөгдөхгүй.
+    // Харах — job-ийг харах эрхтэй хүн бүр; засах / буцаах — зөвхөн багийн гишүүн, RETURNED төлөвт, сүүлийн feedback дээр.
+    const edm = rest.match(/^\/feedback\/(\d{1,3})\/edits(?:\/(preview|docx|all|\d{1,5}))?(?:\/(revert))?$/);
+    if (edm) {
+      const n = Number(edm[1]), sub = edm[2] || '', rel = WF.releasedVersions(rootId);
+      if (!rel.includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
+      if (m === 'GET' && !sub) { const st = ED.state(rootId, n); return st.error ? sendErr(res, st.code, st.error) : sendJson(res, 200, st); }
+      if (m === 'GET' && sub === 'docx') {
+        const w = ED.working(rootId, n);
+        if (!w) return sendErr(res, 404, 'Вэб дээр хийсэн засвар алга');
+        auditLog('report.edit.download', { job: rootId, version: n, applied: w.applied, user: who, role: session.role });
+        const ascii = w.name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+        return send(res, 200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fs.readFileSync(w.path),
+          { 'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(w.name)}` });
+      }
+      if (m !== 'POST') return sendErr(res, 405, 'Method not allowed');
+      if (!inTeam) return sendErr(res, 403, 'Зөвхөн тайлангийн багийн гишүүн тайланг засна');
+      if (WF.stateOf(rootId).state !== 'RETURNED' || n !== rel[rel.length - 1]) return sendErr(res, 409, 'Засвар илгээсний дараа тайланг энд засах боломжгүй');
+      const body = await readJsonBody(req);
+      const pf = path.join(jobDir(rootId), 'feedback', `progress_v${n}.json`);
+      if (sub === 'preview') {
+        const r = ED.preview(rootId, n, String(body.rv_id || ''), body.text);
+        return r.error ? sendErr(res, r.code || 409, r.error) : sendJson(res, 200, r);
+      }
+      if (!sub) {
+        const rv = String(body.rv_id || '');
+        const r = ED.apply(rootId, n, rv, body.text, who);
+        if (r.error) return sendErr(res, r.code || 409, r.error);
+        // Засвар хийсэн саналыг автоматаар «Зассан» гэж тэмдэглэнэ (буцаавал автоматаар хасагдана)
+        const pr = C.readJson(pf) || {};
+        if (!pr[rv]?.done) { pr[rv] = { done: true, by: who, at: C.nowIso(), via: 'edit' }; C.writeJson(pf, pr); }
+        auditLog('report.edit.apply', { job: rootId, version: n, rv_id: rv, seq: r.edit.seq, block: r.edit.block, user: who, role: session.role });
+        log('REPORT_EDIT', `${rootId} v${n} ${rv} seq=${r.edit.seq}`);
+        return sendJson(res, 200, { ok: true, edit: r.edit, state: ED.state(rootId, n), progress: pr });
+      }
+      if (edm[3] === 'revert' && (sub === 'all' || /^\d+$/.test(sub))) {
+        const r = ED.revert(rootId, n, sub, who);
+        if (r.error) return sendErr(res, r.code || 409, r.error);
+        const pr = C.readJson(pf) || {};
+        for (const { rv_id } of r.reverted) if (pr[rv_id]?.via === 'edit' && !r.edits.some(e => e.rv_id === rv_id && e.status === 'applied')) delete pr[rv_id];
+        C.writeJson(pf, pr);
+        auditLog('report.edit.revert', { job: rootId, version: n, seqs: r.reverted.map(x => x.seq), user: who, role: session.role });
+        log('REPORT_EDIT_REVERT', `${rootId} v${n} ${sub}`);
+        return sendJson(res, 200, { ok: true, reverted: r.reverted, conflicts: r.conflicts, state: ED.state(rootId, n), progress: pr });
+      }
+      return sendErr(res, 404, 'Not found');
+    }
     // Царцсан feedback-ийг файлаар татах (Word / Excel) — баг болон захирал
-    const fdm = rest.match(/^\/feedback\/(\d{1,3})\/(docx|xlsx)$/);
+    const fdm =rest.match(/^\/feedback\/(\d{1,3})\/(docx|xlsx)$/);
     if (m === 'GET' && fdm) {
       const n = Number(fdm[1]);
       if (!WF.releasedVersions(rootId).includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');

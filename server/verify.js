@@ -228,7 +228,7 @@ function verifyRecheck(jobDir) {
   return { stats };
 }
 
-module.exports = { verifyFindings, verifyRecheck, applyQuoteFixes, buildFixPrompt, parseFixReply };
+module.exports = { verifyFindings, verifyRecheck, applyQuoteFixes, buildFixPrompt, parseFixReply, normMap, cleanQuote };
 
 if (require.main === module) {
   const dir = path.resolve(process.argv[2] || '');

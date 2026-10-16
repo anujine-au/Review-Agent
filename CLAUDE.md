@@ -30,7 +30,8 @@
 - Төлөв: `DRAFT → SUBMITTED → CAE_REVIEW → RETURNED → RESUBMITTED → … → APPROVED_FINAL` (`server/workflow.js`). Аудитор release хүртэл AI-ийн санал харахгүй; зөвхөн `jobs/<root>/feedback/feedback_v{n}.json` (царцсан).
 - Хянуулах хүсэлт (SUBMITTED / RESUBMITTED) илгээхэд AI шууд ажиллахгүй (AI төлөв `pending`); захирал тайлан бүр дээр «AI хянуулах» (`POST /api/jobs/<id>/ai-review`, эрх `job.runAI`) дарж эхлүүлнэ. AI нэг удаад нэг тайлан шалгах хооронд захирал бусад дууссан тайлангийн саналыг шийдвэрлэж болно.
 - Засварын дахин хяналт (M14) нь сүүлийн release хийсэн feedback-ийн эсрэг шалгана (`runner.previousIssues`).
-- Тест: `node --test tests/workflow.test.js`.
+- Тайлан дээр шууд засах (`server/edits.js`): RETURNED үед багийн гишүүн санал бүрийн `quote`-ыг `suggested_text` (эсвэл өөрийн текст)-ээр урьдчилан харж зөвшөөрнө → `jobs/<root>/edits/v<n>/working.docx` (эх файл өөрчлөгдөхгүй, засвар бүрийг буцааж болно). «Засвар оруулах» маягтаас энэ файлыг засварласан тайлан болгон илгээнэ.
+- Тест: `node --test tests/workflow.test.js tests/edits.test.js`.
 
 ## Хатуу хязгаарлалт
 
