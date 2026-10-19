@@ -307,3 +307,18 @@ test('16. Зөвхөн сүүлийн засварласан хувилбары�
   fs.writeFileSync(jf, JSON.stringify({ ...JSON.parse(fs.readFileSync(jf, 'utf8')), workflow: { state: 'RETURNED', version: 2, history: [] } }));
   assert.equal((await call(tokens.cae1, 'DELETE', `/api/jobs/${V2b}`)).status, 409, 'илгээсэн feedback-тэй хувилбар устсан');
 });
+
+test('17. Илгээгээгүй хувилбарын засах зөвлөмжийн төсөл: захирал татна (шийдвэрлээгүйг тэмдэглэнэ), аудитор — 404', async () => {
+  const J = makeJob({ issues: 3 });
+  await call(tokens.cae1, 'PATCH', `/api/jobs/${J}/decisions/RV-T-C1-001`, { decision: 'APPROVED' });
+  await call(tokens.cae1, 'PATCH', `/api/jobs/${J}/decisions/RV-T-C1-002`, { decision: 'REJECTED' });
+  for (const f of ['docx', 'xlsx']) {
+    const r = await call(tokens.cae1, 'GET', `/api/jobs/${J}/feedback/1/${f}`);
+    assert.equal(r.status, 200, String(r.buf));
+  }
+  const x = await call(tokens.cae1, 'GET', `/api/jobs/${J}/feedback/1/xlsx`);
+  const xml = require(path.join(ROOT, 'server', 'extract')).readZip(x.buf).text('xl/worksheets/sheet1.xml') || '';
+  assert.ok(xml.includes('Санал 1') && xml.includes('(шийдвэрлээгүй) Санал 3') && !xml.includes('Санал 2<'), 'төслийн агуулга буруу');
+  assert.equal((await call(tokens.aud1, 'GET', `/api/jobs/${J}/feedback/1/docx`)).status, 404, 'аудитор төсөл татсан');
+  assert.equal((await call(tokens.cae1, 'GET', `/api/jobs/${J}/feedback/2/docx`)).status, 404);
+});

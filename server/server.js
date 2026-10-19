@@ -1111,11 +1111,20 @@ async function handle(req, res) {
     const fdm =rest.match(/^\/feedback\/(\d{1,3})\/(docx|xlsx)$/);
     if (m === 'GET' && fdm) {
       const n = Number(fdm[1]);
-      if (!WF.releasedVersions(rootId).includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
-      const fb = JSON.parse(C.restoreTokens(jobDir(rootId), fs.readFileSync(path.join(jobDir(rootId), 'feedback', `feedback_v${n}.json`), 'utf8'), true));
+      let fb;
+      if (WF.releasedVersions(rootId).includes(n)) fb = JSON.parse(C.restoreTokens(jobDir(rootId), fs.readFileSync(path.join(jobDir(rootId), 'feedback', `feedback_v${n}.json`), 'utf8'), true));
+      else {
+        // Илгээгээгүй (сүүлийн) хувилбарын төсөл — захирлын одоогийн шийдвэрээр + шийдвэрлээгүй санал. Аудитор release хүртэл харахгүй (§5).
+        if (!U.can(session.role, 'issue.viewAll')) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
+        const draft = WF.draftFeedback(rootId, { includeUndecided: true });
+        if (draft.error) return sendErr(res, 409, draft.error);
+        if (draft.version !== n) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
+        const txt = C.restoreTokens(jobDir(draft.job), JSON.stringify({ version: n, job: draft.job, draft: true, drafted_at: C.nowIso(), items: draft.items }), true);
+        fb = JSON.parse(C.restoreTokens(jobDir(rootId), txt, true));
+      }
       const out = feedbackExport(fb, jobMeta(rootId).audit, fdm[2]);
       log('FEEDBACK_DOWNLOAD', `${rootId} v${n} ${fdm[2]}`);
-      auditLog('feedback.download', { job: rootId, version: n, format: fdm[2], user: who, role: session.role });
+      auditLog('feedback.download', { job: rootId, version: n, format: fdm[2], ...(fb.draft ? { draft: true } : {}), user: who, role: session.role });
       const ascii = out.filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
       return send(res, 200, out.type, out.data, { 'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(out.filename)}` });
     }

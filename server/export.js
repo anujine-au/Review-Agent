@@ -719,23 +719,29 @@ async function buildExport(dir, format) {
    fb: царцсан feedback (жинхэнэ утга сэргээсэн), audit: аудитын мэдээлэл. Аудиторт зөвхөн илгээсэн саналууд л орно. */
 const RC_MN = { NOT_RESOLVED: 'Засагдаагүй', PARTIAL: 'Хэсэгчлэн засагдсан', REGRESSED: 'Засах явцад шинэ алдаа', UNABLE: 'Шалгах боломжгүй' };
 function feedbackExport(fb, audit, format) {
-  const a = audit || {}, items = fb.items || [];
-  const base = `Zasvar_${String(a.code || 'tailan').replace(/[^\w-]+/g, '_')}_v${fb.version}_${String(fb.released_at || '').slice(0, 10)}`;
+  const a = audit || {}, draft = !!fb.draft;
+  // Төсөл (захирал илгээгээгүй): шийдвэрлээгүй саналыг гарчигт нь тэмдэглэнэ
+  const items = (fb.items || []).map(it => it.undecided ? { ...it, title: `(шийдвэрлээгүй) ${it.title || ''}`.trim() } : it);
+  const when = String(fb.released_at || fb.drafted_at || '');
+  const base = `${draft ? 'TOSOL_' : ''}Zasvar_${String(a.code || 'tailan').replace(/[^\w-]+/g, '_')}_v${fb.version}_${when.slice(0, 10)}`;
+  const title = draft ? 'ТӨСӨЛ — захирал илгээгээгүй засварууд' : 'Захирлын буцаасан засварууд';
+  const whenRow = draft ? ['Төлөв', `Төсөл — аудиторт илгээгээгүй (${when.slice(0, 16).replace('T', ' ')} байдлаар; шийдвэрлээгүй ${items.filter(i => i.undecided).length})`]
+    : ['Илгээсэн огноо', when.slice(0, 16).replace('T', ' ')];
   const where = it => [it.anchor, it.quote ? `“${it.quote}”` : ''].filter(Boolean).join(' — ') || 'Тайлан бүхэлдээ';
   if (format === 'xlsx') {
     const cols = ['№', 'Санал ID', 'Зэрэглэл', 'Байршил', 'Гарчиг', 'Тайлбар', 'Юу засах вэ', 'Яагаад', 'Дахин шалгалтын төлөв', 'Дахин шалгалтын тэмдэглэл', 'Модуль / дүрэм', 'Эх сурвалж', 'Аудиторын хариу (бөглөнө)']
       .map((h, i) => ({ h, w: [5, 22, 14, 34, 34, 50, 60, 40, 18, 40, 16, 30, 40][i] }));
     const rows = items.map((it, i) => [i + 1, it.id, SEV_LABEL[it.severity] || it.severity, where(it), it.title, it.issue, it.required_action, it.why_it_matters,
       RC_MN[it.recheck_status] || it.recheck_status || '', it.recheck_note || '', [it.module, it.rule].filter(Boolean).join(' · '), it.source, '']);
-    const info = [['Аудит', a.name || ''], ['Аудитын код', a.code || ''], ['Салбар', a.branch || ''], ['Хувилбар', `v${fb.version}`], ['Илгээсэн огноо', String(fb.released_at || '').replace('T', ' ')],
+    const info = [['Аудит', a.name || ''], ['Аудитын код', a.code || ''], ['Салбар', a.branch || ''], ['Хувилбар', `v${fb.version}`], whenRow,
       ['Саналын тоо', items.length], ['Нууцлал', 'Internal Audit – Restricted']];
     return { data: xlsxFromSheets([{ name: 'Засах зүйлс', cols, rows, sevCol: 2 }, { name: 'Мэдээлэл', cols: [{ h: 'Талбар', w: 22 }, { h: 'Утга', w: 60 }], rows: info }]),
       type: TYPES.xlsx, filename: base + '.xlsx' };
   }
   const body = [];
-  body.push(wP(wRuns('Захирлын буцаасан засварууд'), '<w:pStyle w:val="Title"/>'));
+  body.push(wP(wRuns(title), '<w:pStyle w:val="Title"/>'));
   body.push(wTable([['Аудит', a.name || '—'], ['Аудитын код', a.code || '—'], ['Салбар / нэгж', a.branch || '—'], ['Хувилбар', `v${fb.version} → засаад v${fb.version + 1} илгээнэ`],
-    ['Илгээсэн огноо', String(fb.released_at || '').slice(0, 16).replace('T', ' ')],
+    whenRow,
     ['Саналын тоо', Object.keys(SEV_RANK).map(k => `${SEV_LABEL[k]}: ${items.filter(i => i.severity === k).length}`).join(' · ')], ['Нууцлал', 'Internal Audit – Restricted']], { kv: true }));
   body.push(wP(wRuns('Засвараа өөрийн эх тайланд хийгээд системд «Засвар оруулах» дарж шинэ хувилбараа илгээнэ. Агент санал бүр засагдсан эсэхийг тулгаж шалгана.', { color: '5B6675' })));
   const rows = [['№', 'Зэрэглэл', 'Байршил', 'Юу засах вэ', 'Тайлбар / яагаад']];
@@ -743,7 +749,7 @@ function feedbackExport(fb, audit, format) {
     [it.title, it.required_action].filter(Boolean).join(': ') + (it.recheck_status ? ` [${RC_MN[it.recheck_status] || it.recheck_status}${it.recheck_note ? ': ' + it.recheck_note : ''}]` : ''),
     [it.issue, it.why_it_matters].filter(Boolean).join(' — ') + (it.source ? ` (${it.source})` : '')]));
   body.push(wTable(rows));
-  return { data: docxPackage(body, 'Захирлын буцаасан засварууд ' + (a.code || ''), ['Засварууд', a.code, `v${fb.version}`, 'Internal Audit – Restricted'].filter(Boolean).join(' · ')),
+  return { data: docxPackage(body, title + ' ' + (a.code || ''), [draft ? 'ТӨСӨЛ' : 'Засварууд', a.code, `v${fb.version}`, 'Internal Audit – Restricted'].filter(Boolean).join(' · ')),
     type: TYPES.docx, filename: base + '.docx' };
 }
 

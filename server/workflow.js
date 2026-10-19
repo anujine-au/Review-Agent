@@ -163,7 +163,8 @@ function fbItem(it, sv, dec) {
  * v≥2: өмнөх feedback-ийн засагдаагүй (RESOLVED / NOT_APPLICABLE-аас бусад) мөр + шинэ саналын APPROVED / EDITED;
  *      захирал засагдаагүй мөрийг REJECTED болговол энэ удаа буцаахгүй.
  */
-function draftFeedback(rootId) {
+// includeUndecided: захирал шийдвэрлээгүй саналыг ч (undecided: true) items-д оруулна — илгээхээс өмнөх төсөл татахад
+function draftFeedback(rootId, { includeUndecided = false } = {}) {
   const vs = versions(rootId), n = vs.length, jobId = vs[n - 1];
   if (!jobId) return { error: 'Илгээсэн хувилбар алга' };
   const out = path.join(jdir(jobId), 'sandbox', 'output');
@@ -173,7 +174,7 @@ function draftFeedback(rootId) {
     const d = dec[it.id], v = decOf(d);
     if (v === 'APPROVED' || v === 'EDITED') items.push(fbItem(it, sv, d));
     else if (v === 'REJECTED') excluded.push(it.id);
-    else if (required) undecided.push(it.id);
+    else if (required) { undecided.push(it.id); if (includeUndecided) items.push({ ...fbItem(it, sv, null), undecided: true }); }
     else items.push(fbItem(it, sv, null));
   };
   if (n === 1) {
