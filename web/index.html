@@ -1871,7 +1871,7 @@ function renderJobList() {
       if (multi && open) html += g.versions.slice().reverse().map((v, i) => `<div class="jrow job ver" role="row" tabindex="0" data-id="${v.id}">
         <div role="cell" style="min-width:0"><div class="t">v${g.versions.length - i} · ${v.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'}</div><div class="m" style="padding-left:18px"><span title="${esc(fmtDate(v.created))}">${esc(relTime(v.created))}</span>${who(v) ? `<span>${esc(who(v))}</span>` : ''}</div></div>
         <div role="cell">${procBadge(v.status)}</div><div role="cell">${notesText(v)}</div>
-        <div role="cell" class="acts acts-col"><button class="btn sm" data-open="${v.id}">Нээх</button></div></div>`).join('');
+        <div role="cell" class="acts acts-col"><button class="btn sm" data-open="${v.id}">Нээх</button>${i === 0 && v.parent_id && v.cycle_no === w.version && !j.restricted && canDo('job.delete') && ['RESUBMITTED', 'CAE_REVIEW'].includes(w.state) && !(w.released || []).includes(w.version) && !ACTIVE.includes(v.status) ? `<button class="btn sm ghost delx" data-vdel="${esc(v.id)}" data-vn="${w.version}" data-vroot="${esc(g.rootId)}" title="Зөвхөн энэ хувилбарыг устгана — өмнөх хувилбар, илгээсэн санал хэвээр үлдэнэ" aria-label="Энэ хувилбарыг устгах">🗑</button>` : ''}</div></div>`).join('');
       return html;
     }).join('') : `<div class="empty" style="padding:32px 20px">${listView === 'mine' ? 'Таны ээлжинд хүлээгдэж буй зүйл алга' : 'Илэрц олдсонгүй'}</div>`}</div>`;
   $$('#jobList .job').forEach(c => {
@@ -2686,7 +2686,8 @@ function timelineHtml() {
 const canDropVer = (d, v) => !current.job.restricted && canDo('job.delete') && v.version > 1 && v.version === d.versions.length && !v.released
   && ['RESUBMITTED', 'CAE_REVIEW'].includes(d.wf?.state) && !ACTIVE.includes(v.ai);
 document.addEventListener('click', async e => {
-  const b = e.target.closest('[data-vdel]'); if (!b || !current) return;
+  const b = e.target.closest('[data-vdel]'); if (!b) return;
+  e.stopPropagation();
   const n = Number(b.dataset.vn);
   if (!confirm(`v${n} хувилбарыг устгах уу?
 
@@ -2694,8 +2695,11 @@ document.addEventListener('click', async e => {
 • v1–v${n - 1} болон аудиторт илгээсэн санал, засвар хэвээр үлдэнэ.
 • Тайлан «Засварт буцаасан» (v${n - 1}) төлөвт буцаж, аудитор засвараа дахин илгээнэ.
 • Буцаах боломжгүй.`)) return;
-  const root = current.job.root_id || current.job.parent_id || current.id;
-  try { await api(`/api/jobs/${b.dataset.vdel}`, { method: 'DELETE' }); current.wf = null; go('#job/' + root); loadJobs(); }
+  const root = b.dataset.vroot || (current && (current.job.root_id || current.job.parent_id || current.id));
+  try {
+    await api(`/api/jobs/${b.dataset.vdel}`, { method: 'DELETE' });
+    if (b.dataset.vroot) loadJobs(); else { current.wf = null; go('#job/' + root); loadJobs(); }
+  }
   catch (err) { if (err.message !== 'unauthorized') alert('Устгаж чадсангүй: ' + err.message); }
 });
 // Аудиторт илгээгдсэн feedback (царцсан) — тайлангийн тэмдэглэлийн загвараар
