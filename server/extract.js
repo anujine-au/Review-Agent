@@ -123,12 +123,44 @@ function paragraphKind(p, text) {
   if (runs.length && text.length <= 120 && runs.every(r => { const b = kid(kid(r, 'rPr'), 'b'); const v = attr(b, 'val'); return b && v !== '0' && v !== 'false'; })) return 'h3';
   return 'p';
 }
+// Өнгөөр тэмдэглэсэн хэсэг (аудитор засварласан хэсгээ ихэвчлэн ингэж тэмдэглэдэг): run-ий highlight, shading,
+// үсгийн өнгө, track changes-ийн оруулга. Догол мөр / нүдний бүхэлдээ shading (загварын толгой) тооцохгүй.
+function runMark(r, inIns, colorOk) {
+  const rPr = kid(r, 'rPr'), out = [];
+  const hl = attr(kid(rPr, 'highlight'), 'val');
+  if (hl && hl !== 'none') out.push('highlight:' + hl);
+  const fill = attr(kid(rPr, 'shd'), 'fill');
+  if (fill && !/^(auto|FFFFFF)$/i.test(fill)) out.push('shading:#' + fill.toUpperCase());
+  const color = attr(kid(rPr, 'color'), 'val');
+  if (colorOk && color && !/^(auto|000000|FFFFFF)$/i.test(color)) out.push('font:#' + color.toUpperCase());
+  if (inIns) out.push('tracked-insert');
+  return out.join(',');
+}
+function markedSegments(p, colorOk) {
+  const segs = [];
+  (function walk(node, inIns) {
+    for (const x of node.c || []) {
+      if (!x.n) continue;
+      const l = ln(x.n);
+      if (l === 'del' || l === 'pPr') continue;
+      if (l === 'r') {
+        const text = paragraphText(x), mark = text ? runMark(x, inIns, colorOk) : '';
+        if (!mark) { if (text.trim()) segs.push(null); continue; }
+        const last = segs[segs.length - 1];
+        if (last && last.mark === mark) last.text += text; else segs.push({ mark, text });
+      } else walk(x, inIns || l === 'ins');
+    }
+  })(p, false);
+  return segs.filter(s => s && s.text.trim());
+}
+
 function convertDocx(buf) {
   const zip = readZip(buf);
   const xml = zip.text('word/document.xml');
   if (!xml) throw new Error('word/document.xml олдсонгүй');
   const body = desc(parseXml(xml), 'body')[0];
-  const lines = [], blocks = [];
+  const lines = [], blocks = [], marks = [];
+  const addMarks = (anchor, segs) => { for (const s of segs) marks.push(`MARK ${anchor} {${s.mark}} ${s.text.trim()}`); };
   let pNo = 0, tNo = 0;
   (function walk(nodes) {
     for (const x of nodes) {
@@ -141,6 +173,7 @@ function convertDocx(buf) {
         const kind = paragraphKind(x, text);
         lines.push(`[P${pNo}]` + (kind !== 'p' && kind !== 'li' ? `[${kind}]` : '') + ' ' + text);
         blocks.push({ id: `P${pNo}`, kind, text });
+        addMarks(`P${pNo}`, markedSegments(x, !/^(h\d|title)$/.test(kind)));   // гарчгийн үсгийн өнгө нь загварынх
       } else if (l === 'tbl') {
         tNo++;
         lines.push('', `=== TABLE ${tNo} ===`);
@@ -148,6 +181,7 @@ function convertDocx(buf) {
         kids(x, 'tr').forEach((tr, i) => {
           const cells = kids(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
           lines.push(`T${tNo}R${i + 1} | ` + cells.join(' | '));
+          addMarks(`T${tNo}R${i + 1}`, desc(tr, 'p').flatMap(p => markedSegments(p, true)));
           rows.push(cells);
         });
         lines.push(`=== END TABLE ${tNo} ===`, '');
@@ -157,7 +191,9 @@ function convertDocx(buf) {
       }
     }
   })(body ? body.c : []);
-  return { lines, blocks };
+  if (marks.length) lines.push('', '=== COLOR-MARKED TEXT (highlight / shading / font color / tracked insert) ===',
+    '# Дээрх [P#] / T#R# доторх өнгөөр тэмдэглэсэн хэсгийн хуулбар. Ишлэл (quote)-ийг эх мөрөөс нь авна.', ...marks, '=== END COLOR-MARKED ===');
+  return { lines, blocks, marks: marks.length };
 }
 
 /* ======================= XLSX ======================= */
