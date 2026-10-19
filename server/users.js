@@ -6,7 +6,7 @@
 
   Сэргээх (нууц үгээ мартсан, admin түгжигдсэн үед) — серверийн компьютер дээр:
     node server/users.js list
-    node server/users.js add <нэр> <admin|cae|lead_auditor|auditor> ["Бүтэн нэр"]   → түр нууц үг хэвлэнэ
+    node server/users.js add <нэр> <admin|cae|lead_auditor|auditor|viewer> ["Бүтэн нэр"]   → түр нууц үг хэвлэнэ
     node server/users.js set <нэр> <нууц үг>                                       → байнгын нууц үг (солиулахгүй)
     node server/users.js reset <нэр>                                               → түр нууц үг хэвлэнэ
     node server/users.js disable <нэр> | enable <нэр>
@@ -19,12 +19,14 @@ const C = require('./common');
 
 const FILE = process.env.AR_USERS_FILE || path.join(C.PATHS.web, 'users.json'); // AR_USERS_FILE: зөвхөн тестэд
 // SP-118-04/01 §5 RBAC: cae = ДАГ-ын захирал, lead_auditor = ахлах аудитор, auditor = аудитор, viewer = харах.
-// «Менежер / хянагч» (reviewer), «Удирдлага (харах)» (viewer) role-уудыг 2026-10-12 хассан — байгууллагад ийм албан тушаал байхгүй. PERMS-д үлдээсэн нь хуучин бүртгэлтэй нийцүүлэх зорилготой.
+// «Менежер / хянагч» (reviewer) role-ийг 2026-10-12 хассан — PERMS-д үлдээсэн нь хуучин бүртгэлтэй нийцүүлэх зорилготой.
+// «Зөвхөн харах» (viewer)-ийг 2026-10-19 хэрэглэгчийн хүсэлтээр сэргээв: бүх тайлан, санал харах/татах; үүсгэх, шийдвэрлэх, засах эрхгүй.
 const ROLES = {
   admin: 'Admin',
   cae: 'ДАГ-ын захирал',
   lead_auditor: 'Ахлах аудитор',
   auditor: 'Аудитор',
+  viewer: 'Зөвхөн харах',
 };
 // Үйлдэл → зөвшөөрөгдсөн role
 const PERMS = {
@@ -169,6 +171,6 @@ if (require.main === module) {
     else if (cmd === 'reset') { const r = updateUser(a1, { reset: true }, 'cli'); console.log(`Түр нууц үг (${r.username}): ${r.temp_password}`); }
     else if (cmd === 'login') { if (!['on', 'off'].includes(a1)) throw new Error('login on | login off'); setLoginRequired(a1 === 'on'); console.log(`Нэвтрэлт: ${a1 === 'on' ? 'ШААРДАНА' : 'ШААРДАХГҮЙ'} (серверийг дахин асаах шаардлагагүй)`); }
     else if (cmd === 'disable' || cmd === 'enable') { updateUser(a1, { disabled: cmd === 'disable' }, 'cli'); console.log('OK'); }
-    else console.log('Хэрэглээ: node server/users.js login on|off | list | add <нэр> <admin|cae|lead_auditor|auditor> ["Бүтэн нэр"] | reset <нэр> | disable <нэр> | enable <нэр>');
+    else console.log('Хэрэглээ: node server/users.js login on|off | list | add <нэр> <admin|cae|lead_auditor|auditor|viewer> ["Бүтэн нэр"] | reset <нэр> | disable <нэр> | enable <нэр>');
   } catch (e) { console.error('ERROR: ' + e.message); process.exit(1); }
 }
