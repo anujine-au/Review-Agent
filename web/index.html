@@ -2674,13 +2674,30 @@ function timelineHtml() {
       <div><b>${v.version === 1 ? 'Анхны илгээлт' : 'Засварласан хувилбар'}</b> <span class="vm">· ${esc(fmtDate(v.submitted_at || v.created))} · ${esc(String(v.submitted_by || '').replace(/^name:/, ''))}</span>
         ${v.released ? `<span class="wfst RETURNED" style="margin-left:6px">Feedback илгээсэн</span> <button class="btn sm ghost" data-fbdl="docx" data-fbn="${v.version}">⬇ Word</button><button class="btn sm ghost" data-fbdl="xlsx" data-fbn="${v.version}">⬇ Excel</button>${d.fb?.[v.version]?.items?.length ? (p => ` <span class="vm" title="Аудиторын өөрийн тэмдэглэгээ — засагдсан эсэхийг дахин хяналт шалгана">· аудитор ${p.done}/${p.total} (${p.pct}%) зассан гэж тэмдэглэсэн</span>`)(fbProgress(d.fb[v.version])) : ''}` : ''}
         ${internal && v.verdict ? `<span class="vm"> · ${esc(VERDICT_MN[v.verdict] || v.verdict)} · Ноцтой ${v.r1 ?? 0}</span>` : ''}
-        ${internal && v.job !== current.id ? ` <a href="#job/${esc(v.job)}" class="vm">нээх</a>` : ''}</div>
+        ${internal && v.job !== current.id ? ` <a href="#job/${esc(v.job)}" class="vm">нээх</a>` : ''}
+        ${canDropVer(d, v) ? ` <button class="btn sm ghost delx" data-vdel="${esc(v.job)}" data-vn="${v.version}" title="Зөвхөн энэ хувилбарыг устгана — өмнөх хувилбар, илгээсэн санал хэвээр үлдэнэ">🗑 v${v.version}-ийг устгах</button>` : ''}</div>
       ${v.note ? `<div class="vm" style="margin-top:4px"><b>Юу зассан:</b> ${esc(v.note)}</div>` : ''}
       <div class="vfiles">${(v.files || []).map(f => `<div><span class="sub">${esc(ORIG_CAT[f.cat] || f.cat)}:</span> <b>v${v.version}_${esc(f.name)}</b>${srcLinkHtml(f)}
         ${f.pending ? '<span class="sub">хадгалагдаж байна…</span>' : `<button class="btn sm ghost" data-ofile="${esc(f.name)}" data-ocat="${esc(f.cat)}" data-ojob="${esc(v.job)}">⬇ Татах</button>`}</div>`).join('') || '<span class="sub">Эх файл хадгалагдаагүй</span>'}</div>
     </div></div>`).join('')}</div>
     ${internal && d.versions.length > 1 ? `<div style="margin-top:8px"><button class="btn sm" data-wf="diff">Сүүлийн 2 хувилбарын ялгаа (v${d.versions.length - 1} → v${d.versions.length})</button></div><div id="diffBox"></div>` : ''}`;
 }
+// Зөвхөн сүүлийн засварласан хувилбар (v≥2), feedback илгээгээгүй, AI ажиллаагүй үед — server WF.canDropVersion-тай ижил дүрэм
+const canDropVer = (d, v) => !current.job.restricted && canDo('job.delete') && v.version > 1 && v.version === d.versions.length && !v.released
+  && ['RESUBMITTED', 'CAE_REVIEW'].includes(d.wf?.state) && !ACTIVE.includes(v.ai);
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-vdel]'); if (!b || !current) return;
+  const n = Number(b.dataset.vn);
+  if (!confirm(`v${n} хувилбарыг устгах уу?
+
+• Зөвхөн v${n}: оруулсан эх файл, AI-ийн хяналт, захирлын шийдвэр устгагдана.
+• v1–v${n - 1} болон аудиторт илгээсэн санал, засвар хэвээр үлдэнэ.
+• Тайлан «Засварт буцаасан» (v${n - 1}) төлөвт буцаж, аудитор засвараа дахин илгээнэ.
+• Буцаах боломжгүй.`)) return;
+  const root = current.job.root_id || current.job.parent_id || current.id;
+  try { await api(`/api/jobs/${b.dataset.vdel}`, { method: 'DELETE' }); current.wf = null; go('#job/' + root); loadJobs(); }
+  catch (err) { if (err.message !== 'unauthorized') alert('Устгаж чадсангүй: ' + err.message); }
+});
 // Аудиторт илгээгдсэн feedback (царцсан) — тайлангийн тэмдэглэлийн загвараар
 let fbView = 'doc', fbDoneFilter = 'ALL';
 // Аудиторын «Зассан» тэмдэглэгээ: зөвхөн сүүлийн feedback, төлөв RETURNED, аудиторын хуудас дээр өөрчилнө

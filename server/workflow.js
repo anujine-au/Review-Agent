@@ -114,6 +114,29 @@ function sync(rootId) {
   return !!transition(rootId, 'CAE_REVIEW', { by: 'system', role: 'system', version: st.version }).ok;
 }
 
+/**
+ * Зөвхөн сүүлийн засварласан хувилбарыг (v≥2) устгах боломжтой эсэх. Feedback нь хараахан илгээгдээгүй байх ёстой —
+ * өмнөх хувилбарууд, тэдгээрийн feedback / засвар (feedback/, edits/) root-д хэвээр үлдэнэ.
+ */
+function canDropVersion(rootId, jobId) {
+  const vs = versions(rootId), n = vs.length, st = stateOf(rootId);
+  if (jobId === rootId) return { error: 'Анхны хувилбар (v1)-ийг дангаар нь устгах боломжгүй — бүх тайланг устгана уу', code: 409 };
+  if (vs[n - 1] !== jobId) return { error: 'Зөвхөн сүүлийн хувилбарыг устгана', code: 409 };
+  if (releasedVersions(rootId).includes(n)) return { error: `v${n}-ийн feedback аудиторт илгээгдсэн тул устгах боломжгүй`, code: 409 };
+  if (!['RESUBMITTED', 'CAE_REVIEW'].includes(st.state)) return { error: `«${LABEL[st.state]}» төлөвт хувилбар устгах боломжгүй`, code: 409 };
+  if (AI_RUNNING.includes(aiStatus(jobId))) return { error: 'AI шалгаж байна — эхлээд зогсооно уу', code: 409 };
+  return { ok: true, version: n };
+}
+/** Сүүлийн хувилбарыг устгасны дараа: өмнөх хувилбарын «Засварт буцаасан» төлөв рүү буцна (аудитор дахин илгээнэ) */
+function versionDropped(rootId, n, { from, by = 'system', role = 'system', note = '' } = {}) {
+  const cur = stateOf(rootId), hist = [...cur.history];
+  from = from || cur.state;
+  const ev = { from, to: 'RETURNED', by, role, at: C.nowIso(), version: n - 1, note: `v${n} хувилбарыг устгасан${note ? ': ' + String(note).slice(0, 1900) : ''}` };
+  hist.push(ev);
+  write(rootId, { state: 'RETURNED', version: n - 1, history: hist });
+  auditHook('workflow.transition', { job: rootId, from, to: 'RETURNED', version: n - 1, user: by, role, note: ev.note.slice(0, 300) });
+}
+
 /* ---------- Feedback (release) ---------- */
 const fbDir = rootId => path.join(jdir(rootId), 'feedback');
 const fbFile = (rootId, n) => path.join(fbDir(rootId), `feedback_v${n}.json`);
@@ -239,5 +262,5 @@ function diff(fromJob, toJob) {
 
 module.exports = {
   STATES, LABEL, AI_STARTABLE, rootOf, chain, versions, teamOf, isTeam, stateOf, transition, sync, setAudit, aiStatus,
-  draftFeedback, freezeFeedback, readFeedback, latestFeedback, releasedVersions, seesInternals, restrictJob, diff,
+  draftFeedback, freezeFeedback, readFeedback, latestFeedback, releasedVersions, seesInternals, restrictJob, diff, canDropVersion, versionDropped,
 };

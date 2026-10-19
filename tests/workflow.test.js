@@ -285,3 +285,25 @@ test('15. Илгээхэд AI ажиллахгүй; зөвхөн захирал 
   assert.equal(st, 'failed');
   assert.equal((await call(tokens.cae1, 'POST', `/api/jobs/${id}/ai-review`, {})).status, 200, 'дахин эхлүүлж чадсангүй');
 });
+
+test('16. Зөвхөн сүүлийн засварласан хувилбарыг устгана; өмнөх хувилбар, feedback хэвээр, RETURNED руу буцна', async () => {
+  const R = makeJob({ workflow: { state: 'RESUBMITTED', version: 2, history: [] } });
+  fs.mkdirSync(path.join(DIRS.jobs, R, 'feedback'), { recursive: true });
+  fs.writeFileSync(path.join(DIRS.jobs, R, 'feedback', 'feedback_v1.json'), JSON.stringify({ version: 1, job: R, items: [{ id: 'RV-T-C1-001' }] }));
+  const V2 = makeJob({ parent_id: R, round: 1, workflow: null });
+  assert.equal((await call(tokens.aud1, 'DELETE', `/api/jobs/${V2}`)).status, 403, 'аудитор хувилбар устгасан');
+  assert.equal((await call(tokens.cae1, 'DELETE', `/api/jobs/${R}`)).status, 409, 'v1-ийг дангаар нь устгасан');
+  const r = await call(tokens.cae1, 'DELETE', `/api/jobs/${V2}`);
+  assert.equal(r.status, 200, String(r.buf));
+  assert.ok(!fs.existsSync(path.join(DIRS.jobs, V2)), 'v2 үлдсэн');
+  assert.ok(fs.existsSync(path.join(DIRS.jobs, R, 'feedback', 'feedback_v1.json')), 'v1-ийн feedback устсан');
+  assert.ok(fs.existsSync(path.join(DIRS.jobs, R, 'originals', 'report', 'T_v1.docx')), 'v1-ийн эх файл устсан');
+  const w = (await call(tokens.cae1, 'GET', `/api/jobs/${R}/versions`)).json;
+  assert.equal(w.workflow.state, 'RETURNED'); assert.equal(w.workflow.version, 1); assert.equal(w.versions.length, 1);
+  // feedback нь илгээгдсэн хувилбарыг устгахгүй
+  const V2b = makeJob({ parent_id: R, round: 1, workflow: null });
+  fs.writeFileSync(path.join(DIRS.jobs, R, 'feedback', 'feedback_v2.json'), JSON.stringify({ version: 2, job: V2b, items: [] }));
+  const jf = path.join(DIRS.jobs, R, 'job.json');
+  fs.writeFileSync(jf, JSON.stringify({ ...JSON.parse(fs.readFileSync(jf, 'utf8')), workflow: { state: 'RETURNED', version: 2, history: [] } }));
+  assert.equal((await call(tokens.cae1, 'DELETE', `/api/jobs/${V2b}`)).status, 409, 'илгээсэн feedback-тэй хувилбар устсан');
+});

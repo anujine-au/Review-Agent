@@ -933,6 +933,18 @@ async function handle(req, res) {
       // ?all=1 — тайлангийн бүх хувилбар (v1 + засварууд). Эцэслэн батлагдсан бол archive/-д хуулбар нь хэвээр үлдэнэ.
       const ids = url.searchParams.get('all') ? WF.chain(rootId) : [id];
       if (active && ids.includes(active.id)) return sendErr(res, 409, 'Ажиллаж байгаа review-г эхлээд зогсооно уу');
+      // Нэг хувилбар: зөвхөн сүүлийн, feedback илгээгээгүй засварласан хувилбар. Өмнөх хувилбар, feedback, засвар хэвээр.
+      if (ids.length === 1 && WF.chain(rootId).length > 1) {
+        if (!U.can(session.role, 'job.delete')) return deny();
+        const chk = WF.canDropVersion(rootId, id);
+        if (chk.error) return sendErr(res, chk.code, chk.error);
+        const from = WF.stateOf(rootId).state;
+        removeJob(jobDir(id));
+        WF.versionDropped(rootId, chk.version, { from, by: who, role: session.role, note: String(url.searchParams.get('note') || '') });
+        log('JOB_DELETE_VERSION', `${rootId} v${chk.version} ${id}`);
+        auditLog('job.delete_version', { job: rootId, deleted: id, version: chk.version, user: who, role: session.role });
+        return sendJson(res, 200, { ok: true, deleted: 1, version: chk.version, root: rootId });
+      }
       for (const x of ids.slice().reverse()) removeJob(jobDir(x));
       log('JOB_DELETE', `${ids.join(',')}`);
       auditLog('job.delete', { job: rootId, deleted: ids, versions: ids.length, user: who, role: session.role });
