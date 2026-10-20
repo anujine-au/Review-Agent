@@ -96,6 +96,8 @@ function textOf(node) { let s = ''; for (const x of node?.c || []) s += x.t !== 
 const attr = (node, local) => { if (!node) return undefined; for (const k of Object.keys(node.a)) if (ln(k) === local) return node.a[k]; return undefined; };
 
 /* ======================= DOCX ======================= */
+// Текст хайрцаг (txbxContent)-ийн догол мөр, mc:Fallback (Choice-ийн давхар хуулбар)-ыг орхино —
+// текст хайрцгийг [TB#] мөрөөр тусад нь гаргадаг, догол мөрийн дугаарлалт server/edits.js-тэй таарна.
 function paragraphText(p) {
   let s = '';
   (function walk(node) {
@@ -105,11 +107,124 @@ function paragraphText(p) {
       if (l === 't') s += textOf(x);
       else if (l === 'tab') s += '\t';
       else if (l === 'br' || l === 'cr') s += ' ';
-      else if (l === 'delText' || l === 'instrText') continue;
+      else if (l === 'delText' || l === 'instrText' || l === 'txbxContent' || l === 'Fallback') continue;
       else walk(x);
     }
   })(p);
   return s;
+}
+// sdt (content control)-оор боосон мөр / нүдийг задлана
+function unwrap(node, local) {
+  const out = [];
+  for (const x of node?.c || []) if (x.n) { if (ln(x.n) === local) out.push(x); else if (ln(x.n) === 'sdt') out.push(...unwrap(kid(x, 'sdtContent'), local)); }
+  return out;
+}
+
+/* Жагсаалтын дугаар (numbering.xml): «1.», «2.1», «a)» — Word-д текст биш тул тусад нь тооцно */
+function toRoman(n) { let s = ''; for (const [v, r] of [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]) while (n >= v) { s += r; n -= v; } return s; }
+function listNum(n, fmt) {
+  if (fmt === 'lowerLetter' || fmt === 'upperLetter') { let s = ''; for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(97 + (k - 1) % 26) + s; return fmt === 'upperLetter' ? s.toUpperCase() : s; }
+  if (fmt === 'lowerRoman') return toRoman(n);
+  if (fmt === 'upperRoman') return toRoman(n).toUpperCase();
+  if (fmt === 'decimalZero') return String(n).padStart(2, '0');
+  return String(n);
+}
+function numberingOf(zip) {
+  const abs = new Map(), nums = new Map(), styleNum = new Map(), counters = new Map();
+  const nx = zip.text('word/numbering.xml');
+  if (nx) {
+    const root = parseXml(nx);
+    for (const a of desc(root, 'abstractNum')) {
+      const lv = {};
+      for (const l of kids(a, 'lvl')) lv[attr(l, 'ilvl')] = { fmt: attr(kid(l, 'numFmt'), 'val') || 'decimal', text: attr(kid(l, 'lvlText'), 'val') ?? '', start: parseInt(attr(kid(l, 'start'), 'val'), 10) || 1 };
+      abs.set(attr(a, 'abstractNumId'), lv);
+    }
+    for (const n of desc(root, 'num')) {
+      const lv = { ...(abs.get(attr(kid(n, 'abstractNumId'), 'val')) || {}) };
+      for (const o of kids(n, 'lvlOverride')) { const i = attr(o, 'ilvl'), st = attr(kid(o, 'startOverride'), 'val'); if (lv[i] && st) lv[i] = { ...lv[i], start: parseInt(st, 10) }; }
+      nums.set(attr(n, 'numId'), lv);
+    }
+  }
+  const sx = zip.text('word/styles.xml');
+  if (sx) for (const s of desc(parseXml(sx), 'style')) {
+    const np = kid(kid(s, 'pPr'), 'numPr');
+    if (np) styleNum.set(attr(s, 'styleId'), { numId: attr(kid(np, 'numId'), 'val'), ilvl: attr(kid(np, 'ilvl'), 'val') || '0' });
+  }
+  return p => {
+    const pPr = kid(p, 'pPr'), np = kid(pPr, 'numPr'), st = styleNum.get(attr(kid(pPr, 'pStyle'), 'val'));
+    const numId = attr(kid(np, 'numId'), 'val') ?? st?.numId, ilvl = parseInt(attr(kid(np, 'ilvl'), 'val') ?? st?.ilvl ?? '0', 10);
+    const lv = nums.get(numId);
+    if (!lv || numId === '0' || !lv[ilvl] || lv[ilvl].fmt === 'bullet' || lv[ilvl].fmt === 'none') return '';
+    const c = counters.get(numId) || []; counters.set(numId, c);
+    c[ilvl] = c[ilvl] === undefined ? lv[ilvl].start : c[ilvl] + 1;
+    c.length = ilvl + 1;
+    return lv[ilvl].text.replace(/%(\d)/g, (m, k) => { const l = lv[k - 1]; return l ? listNum(c[k - 1] ?? l.start, l.fmt) : ''; }).trim();
+  };
+}
+
+/* Зураг, диаграм: Word-ийн диаграм (chart) ба SmartArt-ын текст / тоо, текст хайрцаг, зургийн alt текст.
+   PNG / JPG зурагт текст байхгүй — images[]-ээр буцааж, хэрэглэгч зөвшөөрвөл Claude-д харуулна. */
+const VIS_CAPTION = /^\s*(Зураг|Диаграм|График|Схем|Figure|Chart)\s*[\d.]/i;
+const IMG_READABLE = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+function relsOf(zip, part) {
+  const m = new Map(), x = zip.text(part.replace(/([^/]+)$/, '_rels/$1.rels'));
+  if (x) for (const r of desc(parseXml(x), 'Relationship')) m.set(attr(r, 'Id'), attr(r, 'TargetMode') === 'External' ? null : path.posix.normalize(path.posix.join(path.posix.dirname(part), attr(r, 'Target') || '')).replace(/^\//, ''));
+  return m;
+}
+const ptVals = node => desc(node, 'pt').map(pt => ({ i: +attr(pt, 'idx'), v: textOf(kid(pt, 'v')).trim() })).sort((a, b) => a.i - b.i);
+function chartLines(xml, id) {
+  const root = parseXml(xml), chart = desc(root, 'chart')[0] || root;
+  const titleOf = n => clip(desc(kid(n, 'title'), 't').map(textOf).join(''), 200);
+  const axes = ['catAx', 'valAx', 'dateAx', 'serAx'].flatMap(a => desc(chart, a)).map(titleOf).filter(Boolean);
+  const out = [`[${id}] Диаграм${titleOf(chart) ? ': ' + titleOf(chart) : ''}${axes.length ? ` (тэнхлэг: ${axes.join(' / ')})` : ''}`];
+  desc(chart, 'ser').forEach((ser, i) => {
+    const name = desc(kid(ser, 'tx'), 'v').map(textOf).join('').trim() || `Цуваа ${i + 1}`;
+    const cats = ptVals(kid(ser, 'cat') || kid(ser, 'xVal')), vals = ptVals(kid(ser, 'val') || kid(ser, 'yVal'));
+    const catOf = new Map(cats.map(c => [c.i, c.v]));
+    out.push(`${id}S${i + 1} | ${name} | ` + vals.map(v => `${catOf.get(v.i) ?? '#' + (v.i + 1)}: ${v.v}`).join('; '));
+  });
+  return out;
+}
+function smartArtText(xml) {
+  return desc(parseXml(xml), 'pt').filter(pt => !/^(parTrans|sibTrans|pres)$/.test(attr(pt, 'type') || ''))
+    .map(pt => desc(kid(pt, 't'), 'r').map(r => textOf(kid(r, 't'))).join('').trim()).filter(Boolean).join(' / ');
+}
+// Догол мөр доторх зураг, диаграм → мөрүүд; ctx: { zip, rels, n: тоолуур, images }
+function visualLines(p, ctx) {
+  const out = [];
+  (function walk(node) {
+    for (const x of node.c || []) {
+      if (!x.n) continue;
+      const l = ln(x.n);
+      if (l === 'Fallback') continue;
+      if (l === 'drawing' || l === 'pict') {
+        const dp = desc(x, 'docPr')[0], alt = clip([attr(dp, 'title'), attr(dp, 'descr')].filter(Boolean).join(' — '), 300);
+        const altTxt = alt ? ` alt: ${alt}` : '';
+        const ch = desc(x, 'chart')[0], dg = desc(x, 'relIds')[0], blips = [...desc(x, 'blip'), ...desc(x, 'imagedata')];
+        if (ch) {
+          const target = ctx.rels.get(attr(ch, 'id')), xml = target && ctx.zip.text(target);
+          const id = `CH${++ctx.n.ch}`, at = out.length;
+          out.push(...(xml ? chartLines(xml, id) : [`[${id}] Диаграм (өгөгдөл олдсонгүй)`]));
+          out[at] += altTxt;
+        } else if (dg) {
+          const target = ctx.rels.get(attr(dg, 'dm')), xml = target && ctx.zip.text(target);
+          out.push(`[DG${++ctx.n.dg}] SmartArt: ${xml ? smartArtText(xml) || '(текстгүй)' : '(өгөгдөл олдсонгүй)'}${altTxt}`);
+        } else if (blips.length) {
+          const target = ctx.rels.get(attr(blips[0], 'embed') || attr(blips[0], 'id')), ext = path.extname(target || '').toLowerCase();
+          const id = `IMG${++ctx.n.img}`, file = target ? path.posix.basename(target) : '';
+          const ok = target && IMG_READABLE.includes(ext) && ctx.zip.names.includes(target);
+          const saved = id + (ext === '.jpeg' ? '.jpg' : ext);
+          if (ok) ctx.images.push({ id, file: saved, data: ctx.zip.get(target) });
+          out.push(`[${id}] Зураг${file ? ` (${file})` : ''}${ok ? ` → report_images/${saved}` : target ? ` — ${ext || 'тодорхойгүй'} формат, уншигдахгүй` : ' — холбоос (файлд хадгалаагүй)'}${altTxt}`);
+        }
+        for (const tb of desc(x, 'txbxContent')) {
+          const t = desc(tb, 'p').map(paragraphText).filter(s => s.trim()).join(' / ').trim();
+          if (t) out.push(`[TB${++ctx.n.tb}] Текст хайрцаг: ${t}`);
+        }
+      } else walk(x);
+    }
+  })(p);
+  return out;
 }
 function paragraphKind(p, text) {
   const pPr = kid(p, 'pPr');
@@ -165,7 +280,7 @@ function markedSegments(p, inHeading) {
     for (const x of node.c || []) {
       if (!x.n) continue;
       const l = ln(x.n);
-      if (l === 'del' || l === 'pPr') continue;
+      if (l === 'del' || l === 'pPr' || l === 'txbxContent' || l === 'Fallback') continue;
       if (l === 'r') {
         const text = paragraphText(x), mark = text ? runMark(x, inIns, inHeading) : '';
         if (!mark) { if (text.trim()) segs.push(null); continue; }
@@ -196,7 +311,7 @@ function docxSideText(zip) {
 // Нэгтгэсэн нүд: хэвтээ (gridSpan) нүдний дараа «←», босоо (vMerge) үргэлжлэлд «↑» — баганын байрлал толгойтой таарна
 function rowCells(tr) {
   const out = [];
-  for (const tc of kids(tr, 'tc')) {
+  for (const tc of unwrap(tr, 'tc')) {
     const tcPr = kid(tc, 'tcPr'), vm = kid(tcPr, 'vMerge');
     let text = desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim();
     if (vm && attr(vm, 'val') !== 'restart' && !text) text = '↑';
@@ -212,10 +327,13 @@ function convertDocx(buf) {
   if (!xml) throw new Error('word/document.xml олдсонгүй');
   const body = desc(parseXml(xml), 'body')[0];
   const lines = [], blocks = [], marks = [];
-  const headerFills = new Set(desc(body, 'tbl').flatMap(t => kids(kids(t, 'tr')[0], 'tc'))
+  const headerFills = new Set(desc(body, 'tbl').flatMap(t => unwrap(unwrap(t, 'tr')[0], 'tc'))
     .map(tc => (attr(kid(kid(tc, 'tcPr'), 'shd'), 'fill') || '').toUpperCase()));
   const addMarks = (anchor, segs) => { for (const s of segs) marks.push(`MARK ${anchor} {${s.mark}} ${s.text.trim()}`); };
-  let pNo = 0, tNo = 0, prev = null;   // prev: шууд өмнөх элемент ({ p, text } эсвэл { tbl: END TABLE мөрийн индекс })
+  // prev: шууд өмнөх элемент ({ p, text, vis: зургийн мөрийн индекс } эсвэл { tbl: END TABLE мөрийн индекс })
+  let pNo = 0, tNo = 0, prev = null;
+  const ctx = { zip, rels: relsOf(zip, 'word/document.xml'), n: { ch: 0, dg: 0, img: 0, tb: 0 }, images: [] };
+  const numLabel = numberingOf(zip);
   const side = docxSideText(zip);
   if (side.length) lines.push('=== HEADER / FOOTER / FOOTNOTES ===', ...side, '=== END HEADER / FOOTER ===', '');
   (function walk(nodes) {
@@ -223,28 +341,40 @@ function convertDocx(buf) {
       if (!x.n) continue;
       const l = ln(x.n);
       if (l === 'p') {
-        const text = paragraphText(x);
-        if (!text.trim()) continue;
-        pNo++;
-        const kind = paragraphKind(x, text);
-        lines.push(`[P${pNo}]` + (kind !== 'p' && kind !== 'li' ? `[${kind}]` : '') + ' ' + text);
-        blocks.push({ id: `P${pNo}`, kind, text });
-        addMarks(`P${pNo}`, markedSegments(x, /^(h\d|title)$/.test(kind)));
-        if (prev?.tbl !== undefined && TABLE_NOTE.test(text)) lines[prev.tbl] += ` (тайлбар [P${pNo}]: ${clip(text)})`;
-        prev = { p: pNo, text };
+        const text = paragraphText(x), vis = visualLines(x, ctx), num = numLabel(x);
+        if (!text.trim() && !vis.length) continue;
+        let cur = { vis: undefined };
+        if (text.trim()) {
+          pNo++;
+          const kind = paragraphKind(x, text);
+          lines.push(`[P${pNo}]` + (kind !== 'p' && kind !== 'li' ? `[${kind}]` : '') + (num ? `[№ ${num}]` : '') + ' ' + text);
+          blocks.push({ id: `P${pNo}`, kind, text });
+          addMarks(`P${pNo}`, markedSegments(x, /^(h\d|title)$/.test(kind)));
+          if (prev?.tbl !== undefined && TABLE_NOTE.test(text)) lines[prev.tbl] += ` (тайлбар [P${pNo}]: ${clip(text)})`;
+          cur = { p: pNo, text };
+          if (prev?.vis !== undefined && !prev.captioned && VIS_CAPTION.test(text)) { lines[prev.vis] += ` (гарчиг [P${pNo}]: ${clip(text)})`; cur.used = true; }
+        }
+        if (vis.length) {
+          const before = !cur.p && prev?.p && !prev.used && VIS_CAPTION.test(prev.text) ? prev : null;
+          if (before) vis[0] += ` (гарчиг [P${before.p}]: ${clip(before.text)})`;
+          cur.vis = lines.length; cur.captioned = !!before;
+          lines.push(...vis);
+        }
+        prev = cur;
       } else if (l === 'tbl') {
         tNo++;
         const cap = prev?.p && TABLE_CAPTION.test(prev.text) ? ` (гарчиг [P${prev.p}]: ${clip(prev.text)})` : '';
         lines.push('', `=== TABLE ${tNo} ===${cap}`);
         const rows = [];
-        kids(x, 'tr').forEach((tr, i) => {
-          const cells = kids(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
+        unwrap(x, 'tr').forEach((tr, i) => {
+          const cells = unwrap(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
           lines.push(`T${tNo}R${i + 1} | ` + rowCells(tr).join(' | '));
-          const tcs = kids(tr, 'tc');
+          const tcs = unwrap(tr, 'tc');
           addMarks(`T${tNo}R${i + 1}`, tcs.flatMap((tc, j) => {
             const fill = i ? cellFill(tc, headerFills) : '';
             return fill && cells[j] ? [{ mark: 'cell:#' + fill, text: cells[j] }] : desc(tc, 'p').flatMap(p => markedSegments(p, false));
           }));
+          lines.push(...desc(tr, 'p').flatMap(p => visualLines(p, ctx)).map(v => `  ${v} (мөр T${tNo}R${i + 1})`));
           rows.push(cells);
         });
         lines.push(`=== END TABLE ${tNo} ===`, '');
@@ -257,7 +387,7 @@ function convertDocx(buf) {
   })(body ? body.c : []);
   if (marks.length) lines.push('', '=== COLOR-MARKED TEXT (highlight / shading / font color / tracked insert / cell fill) ===',
     '# Дээрх [P#] / T#R# доторх өнгөөр тэмдэглэсэн хэсгийн хуулбар. Ишлэл (quote)-ийг эх мөрөөс нь авна.', ...marks, '=== END COLOR-MARKED ===');
-  return { lines, blocks, marks: marks.length };
+  return { lines, blocks, marks: marks.length, images: ctx.images };
 }
 
 /* ======================= XLSX ======================= */
@@ -640,7 +770,7 @@ function listFiles(dir) {
 }
 
 /**
- * @param {object} o  { inputDir, outDir, maskMapOut?, maskSummaryOut?, docJsonOut?, sourcesOut?, allowText? }
+ * @param {object} o  { inputDir, outDir, maskMapOut?, maskSummaryOut?, docJsonOut?, sourcesOut?, imagesOut?, allowText? }
  * @returns {string[]} явцын мөрүүд
  */
 function extractAll(o) {
@@ -662,7 +792,15 @@ function extractAll(o) {
     const dest = path.join(o.outDir, rel + '.txt');
     let lines, sheets = null, blocks = null;
     try {
-      if (ext === '.docx') ({ lines, blocks } = convertDocx(fs.readFileSync(file)));
+      if (ext === '.docx') {
+        let images; ({ lines, blocks, images } = convertDocx(fs.readFileSync(file)));
+        // Тайлан доторх зураг: зөвхөн --images-out өгсөн (хэрэглэгч зураг илгээхийг зөвшөөрсөн) үед бичнэ
+        if (o.imagesOut && category === 'report' && images.length) {
+          fs.mkdirSync(o.imagesOut, { recursive: true });
+          for (const im of images) fs.writeFileSync(path.join(o.imagesOut, im.file), im.data);
+          log.push(`OK   ${name} -> ${images.length} зураг`);
+        }
+      }
       else if (ext === '.xlsx' || ext === '.xlsm') ({ lines, sheets } = convertXlsx(fs.readFileSync(file)));
       else if (ext === '.csv') ({ lines, sheets } = convertCsv(fs.readFileSync(file)));
       else if (ext === '.txt' || ext === '.md') lines = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
@@ -757,6 +895,7 @@ if (require.main === module) {
     maskSummaryOut: get('--mask-summary') && path.resolve(get('--mask-summary')),
     docJsonOut: get('--doc-json') && path.resolve(get('--doc-json')),
     sourcesOut: get('--sources') && path.resolve(get('--sources')),
+    imagesOut: get('--images-out') && path.resolve(get('--images-out')),   // тайлан доторх зураг (далдлагдахгүй)
     allowText: get('--allow', ''), // аудитын нэр, салбар, код — эдгээрийг хувийн мэдээлэл гэж далдлахгүй
     seedMap: get('--seed-map') && path.resolve(get('--seed-map')), // дахин шалгалт: анхны review-ийн mask_map
   };

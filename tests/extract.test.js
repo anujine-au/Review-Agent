@@ -66,6 +66,49 @@ test('header / footer / зүүлт, хүснэгтийн гарчиг ба та�
   assert.deepEqual(r.blocks[1].rows[2], ['', '3', '4']);   // doc.json (ишлэл тулгалт) хэвээр
 });
 
+test('зураг, Word-ийн диаграм, SmartArt, текст хайрцаг, жагсаалтын дугаар, sdt-ээр боосон мөрийг уншина', () => {
+  const xml = b => Buffer.from(`<?xml version="1.0"?>${b}`);
+  const C = 'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const drawing = inner => `<w:r><w:drawing><wp:inline xmlns:wp="x"><wp:docPr id="1" name="p" descr="Багцын бүтэц"/>${inner}</wp:inline></w:drawing></w:r>`;
+  const body =
+    `<w:p>${drawing('<a:graphic xmlns:a="a"><a:graphicData><a:blip r:embed="rIdImg"/></a:graphicData></a:graphic>')}</w:p>` +
+    '<w:p><w:r><w:t>Зураг 2. Багцын бүтэц</w:t></w:r></w:p>' +
+    `<w:p>${drawing('<c:chart xmlns:c="c" r:id="rIdCh"/>')}</w:p>` +
+    `<w:p>${drawing('<dgm:relIds xmlns:dgm="d" r:dm="rIdDg"/>')}</w:p>` +
+    `<w:p><w:r><w:t>Үндсэн</w:t></w:r><mc:AlternateContent xmlns:mc="m"><mc:Choice><w:r><w:drawing><wps:txbx xmlns:wps="s"><w:txbxContent><w:p><w:r><w:t>Хайрцаг</w:t></w:r></w:p></w:txbxContent></wps:txbx></w:drawing></w:r></mc:Choice>` +
+    '<mc:Fallback><w:r><w:pict><v:textbox xmlns:v="v"><w:txbxContent><w:p><w:r><w:t>Хайрцаг</w:t></w:r></w:p></w:txbxContent></v:textbox></w:pict></w:r></mc:Fallback></mc:AlternateContent></w:p>' +
+    '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Нэгдүгээр</w:t></w:r></w:p>' +
+    '<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Дэд</w:t></w:r></w:p>' +
+    '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Хоёрдугаар</w:t></w:r></w:p>' +
+    '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>А</w:t></w:r></w:p></w:tc></w:tr><w:sdt><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Б</w:t></w:r></w:p></w:tc></w:tr></w:sdtContent></w:sdt></w:tbl>';
+  const r = convertDocx(zip([
+    { name: 'word/document.xml', data: xml(`<w:document ${W} ${R}><w:body>${body}</w:body></w:document>`) },
+    { name: 'word/_rels/document.xml.rels', data: xml('<Relationships><Relationship Id="rIdImg" Target="media/image1.png"/><Relationship Id="rIdCh" Target="charts/chart1.xml"/><Relationship Id="rIdDg" Target="diagrams/data1.xml"/></Relationships>') },
+    { name: 'word/media/image1.png', data: Buffer.from('PNG') },
+    { name: 'word/charts/chart1.xml', data: xml(`<c:chartSpace ${C}><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>NPL</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart><c:ser>` +
+      '<c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>2026</c:v></c:pt></c:strCache></c:strRef></c:tx>' +
+      '<c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>Авто</c:v></c:pt><c:pt idx="1"><c:v>Хэрэглээ</c:v></c:pt></c:strCache></c:strRef></c:cat>' +
+      '<c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>4.2</c:v></c:pt><c:pt idx="1"><c:v>7</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>') },
+    { name: 'word/diagrams/data1.xml', data: xml('<dgm:dataModel xmlns:dgm="d" xmlns:a="a"><dgm:ptLst><dgm:pt modelId="1" type="doc"><dgm:t><a:p><a:r><a:t>Үйл явц</a:t></a:r></a:p></dgm:t></dgm:pt><dgm:pt modelId="2"><dgm:t><a:p><a:r><a:t>Олголт</a:t></a:r></a:p></dgm:t></dgm:pt><dgm:pt modelId="3" type="parTrans"/></dgm:ptLst></dgm:dataModel>') },
+    { name: 'word/numbering.xml', data: xml(`<w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2)"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`) }]));
+  const L = r.lines.filter(l => !l.startsWith('=== ') && l);
+  assert.deepEqual(L, [
+    '[IMG1] Зураг (image1.png) → report_images/IMG1.png alt: Багцын бүтэц (гарчиг [P1]: Зураг 2. Багцын бүтэц)',
+    '[P1] Зураг 2. Багцын бүтэц',
+    '[CH1] Диаграм: NPL alt: Багцын бүтэц',
+    'CH1S1 | 2026 | Авто: 4.2; Хэрэглээ: 7',
+    '[DG1] SmartArt: Үйл явц / Олголт alt: Багцын бүтэц',
+    '[P2] Үндсэн',
+    '[TB1] Текст хайрцаг: Хайрцаг',
+    '[P3][№ 1.] Нэгдүгээр',
+    '[P4][№ a)] Дэд',
+    '[P5][№ 2.] Хоёрдугаар',
+    'T1R1 | А',
+    'T1R2 | Б']);
+  assert.deepEqual(r.images.map(i => i.file), ['IMG1.png']);
+});
+
 test('өнгөгүй тайланд COLOR-MARKED хэсэг нэмэгдэхгүй', () => {
   const r = convertDocx(docx('<w:p><w:r><w:rPr><w:color w:val="000000"/><w:highlight w:val="none"/></w:rPr><w:t>Хар</w:t></w:r></w:p>'));
   assert.equal(r.marks, 0);

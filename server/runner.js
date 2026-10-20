@@ -46,7 +46,7 @@ function toolLabel(name, input = {}) {
 function clearWorkFiles(jobDir) {
   // Эх файлуудыг устгахын өмнө хувилбарын хадгалалт руу шилжүүлнэ (originals/)
   try { ORIG.preserve(jobDir); } catch (e) { console.error('originals:', e.message); }
-  for (const sub of ['input', 'sandbox/extracted', 'sandbox/agent', 'sandbox/evidence_images', 'sandbox/previous', 'sandbox/facts', 'sandbox/lessons', 'prompt.txt']) rmrf(path.join(jobDir, sub));
+  for (const sub of ['input', 'sandbox/extracted', 'sandbox/agent', 'sandbox/evidence_images', 'sandbox/report_images','sandbox/previous', 'sandbox/facts', 'sandbox/lessons', 'prompt.txt']) rmrf(path.join(jobDir, sub));
   // Claude Code-ийн төслийн хавтас (session persistence унтраалттай ч хоосон хавтас үүсч болно)
   const slug = path.join(jobDir, 'sandbox').replace(/[^A-Za-z0-9]/g, '-');
   rmrf(path.join(process.env.USERPROFILE || os.homedir(), '.claude', 'projects', slug));
@@ -84,7 +84,7 @@ These rules come from the department's SP-118-04 standard pack and its source do
 Files for this review (all paths relative to the current directory):
 - facts/gate0.json and facts/rule_engine.json — results of the deterministic Rule Engine (inputs received, Source_Doc_ID, annex references, codes found, and the issues it already raised). Treat them as verified facts. Do NOT repeat any issue listed there (same rule on the same matter); the system adds them itself.
 - Extracted text: extracted/*.txt
-  - Main report (extracted/report__*.txt): every paragraph starts with its ID [P#] (optionally followed by [title]/[h1]/[h2]/[h3] for headings); table rows start with T#R# (table number + row number). PDF paragraphs also show the page as (х.N). A final "=== COLOR-MARKED TEXT ===" section (lines "MARK P12 {highlight:yellow} …") may list text the author colour-marked in Word; treat it as a pointer only and take quotes from the [P#] / T#R# lines. The file may start with "=== HEADER / FOOTER / FOOTNOTES ===" (lines "HEADER | …", "FOOTER | …", "FN2 | …"): check them against the report (name, date, unit), but they have no [P#] ID — for an issue there use the anchor of the first paragraph ([P1]) and say «header»/«footer»/«зүүлт» in the issue text, with "quote": "". A "=== TABLE n ===" line may name its caption paragraph ("гарчиг [P59]: Хүснэгт 1. …") and the note under it ("тайлбар [P61]: …") — read the caption, table and note together (title, unit such as «сая төгрөгөөр», period, totals). In table rows "↑" means the cell is vertically merged with the one above and "←" means it is merged with the cell to its left; never put ↑ or ← in a quote.
+  - Main report (extracted/report__*.txt): every paragraph starts with its ID [P#] (optionally followed by [title]/[h1]/[h2]/[h3] for headings); table rows start with T#R# (table number + row number). PDF paragraphs also show the page as (х.N). A final "=== COLOR-MARKED TEXT ===" section (lines "MARK P12 {highlight:yellow} …") may list text the author colour-marked in Word; treat it as a pointer only and take quotes from the [P#] / T#R# lines. The file may start with "=== HEADER / FOOTER / FOOTNOTES ===" (lines "HEADER | …", "FOOTER | …", "FN2 | …"): check them against the report (name, date, unit), but they have no [P#] ID — for an issue there use the anchor of the first paragraph ([P1]) and say «header»/«footer»/«зүүлт» in the issue text, with "quote": "". A "=== TABLE n ===" line may name its caption paragraph ("гарчиг [P59]: Хүснэгт 1. …") and the note under it ("тайлбар [P61]: …") — read the caption, table and note together (title, unit such as «сая төгрөгөөр», period, totals). In table rows "↑" means the cell is vertically merged with the one above and "←" means it is merged with the cell to its left; never put ↑ or ← in a quote. "[№ 3.]" after a paragraph ID is Word's automatic list number (not part of the text — never quote it). Pictures and diagrams sit right after their paragraph or row: "[CH#] Диаграм: …" with "CH#S# | series | category: value; …" lines (data stored in the Word chart), "[DG#] SmartArt: …", "[TB#] Текст хайрцаг: …" (text box), "[IMG#] Зураг …" (a picture; see Images below), each with its caption "(гарчиг [P#]: Зураг 2. …)" when found — check chart values and labels against the text and tables; these lines have no [P#] ID, so anchor such issues to the paragraph or row they follow.
   - Excel: SHEET blocks; each line starts with the real Excel row number R#; formulas shown as {=...}; date cells shown as YYYY-MM-DD.
 - Audit program (only if uploaded): extracted/program__*.txt — apply M02-04: list every program step and how the report covers it in "program_coverage" (status finding / no_exception / scope_limitation / not_reported, with report_anchor and program_ref). If no program__ file exists, set "program_coverage": [].
 - Follow-up extract RPT-175 (uploaded by the auditor, or auto-attached from the department's central RPT-175 for this unit — file RPT175_<unit>_<date>.csv): extracted/followup__*.txt — one row per recommendation; the "Статус (S1–S7)" column is already mapped from the legacy status (Done + ДАГ баталгаажуулсан → S5, To-do → S1). Apply M10-01…07 and fill "followup_check" with one row per finding (iss_id, title, rating, status, due_date, overdue_days, in_report, report_anchor, repeat). The Rule Engine already raised M10-01 (open items not mentioned in the report) and M10-04 (overdue) — see facts/rule_engine.json; do not repeat them, but do judge M10-02 repeats (same process/cause within 12 months — RPT-175 has no RC code column, so compare by title, category and cause text) and M10-07. If absent, set "followup_check": [].
@@ -128,14 +128,15 @@ ${maskNote}
 }
 
 // Дахин шалгалт: засварласан тайланд өмнөх тэмдэглэл бүр засагдсан эсэхийг шалгах prompt
-function buildRecheckPrompt(job, count, mask, cycle) {
+function buildRecheckPrompt(job, count, mask, cycle, imageNote = '') {
   return `You are the SP-118-04 agent running module M14 (version comparison, cycle C${cycle}, DELTA mode) on a REVISED internal audit report. The director approved ${count} review comments on the previous version (previous/previous_issues.json); the auditor has since revised the report. Your job: (1) for EACH previous comment decide whether the revised report resolves it; (2) look for NEW serious problems only in the parts that changed and the parts linked to them by the dependency matrix.
 
 Files (paths relative to the current directory):
 - previous/previous_issues.json — the approved comments: id, severity (R1–R4), module, rule, title, issue, required_action (the director's edited text when edited), resolution_check, old anchor and old quote (these refer to the OLD report).
-- extracted/report__*.txt — the REVISED report. Every paragraph starts with [P#]; table rows start with T#R#. PDF paragraphs show (х.N). It may start with "=== HEADER / FOOTER / FOOTNOTES ===" lines (no [P#] ID — anchor such issues to P1 with "quote": ""). A "=== TABLE n ===" line may name its caption ("гарчиг [P#]: …") and note ("тайлбар [P#]: …") — check them together with the table. In table rows "↑" = merged with the cell above, "←" = merged with the cell to the left; never put ↑ or ← in a quote.
+- extracted/report__*.txt — the REVISED report. Every paragraph starts with [P#]; table rows start with T#R#. PDF paragraphs show (х.N). It may start with "=== HEADER / FOOTER / FOOTNOTES ===" lines (no [P#] ID — anchor such issues to P1 with "quote": ""). A "=== TABLE n ===" line may name its caption ("гарчиг [P#]: …") and note ("тайлбар [P#]: …") — check them together with the table. In table rows "↑" = merged with the cell above, "←" = merged with the cell to the left; never put ↑ or ← in a quote. "[№ 3.]" is Word's automatic list number (never quote it). Lines "[CH#] Диаграм" (+ "CH#S# | series | category: value"), "[DG#] SmartArt", "[TB#] Текст хайрцаг" and "[IMG#] Зураг" describe pictures and diagrams placed after their paragraph or row — anchor issues there to that paragraph or row.
   If the auditor colour-marked text in Word (highlight, shading, font colour, whole-cell fill or tracked insertions), the file ends with a "=== COLOR-MARKED TEXT ===" section: lines "MARK P12 {highlight:yellow} …" copy that marked text. Auditors usually mark what they changed — check these places first, both for previous comments and for new_issues. Unmarked text may also have changed, so do not rely on the marks alone. Take "quote" from the [P#] / T#R# line, never from a MARK line.
 - extracted/excel__*.txt and *.profile.txt — Excel files, if the auditor uploaded them again (may be absent).
+- Images: ${imageNote || 'No images are provided.'}
 - agent/prompts/system_prompt.md (criteria catalog), agent/config/decision_rules.md (dependency matrix §4, M14 rules) and agent/config/writing_standard.md — for reference.
 
 1) For every previous comment write one item in "items":
@@ -373,6 +374,7 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
     if (mask) exArgs.push('--mask-map', path.join(jobDir, 'mask_map.json'), '--mask-summary', path.join(jobDir, 'mask_summary.json'));
     const allow = [job.audit?.name, job.audit?.code, job.audit?.branch].filter(Boolean).join(' ');
     if (mask && allow) exArgs.push('--allow', allow);
+    if (job.send_images) exArgs.push('--images-out', path.join(sandbox, 'report_images'));   // тайлан доторх зураг — зөвшөөрсөн үед л
     if (mask && rootDir && fs.existsSync(path.join(rootDir, 'mask_map.json'))) exArgs.push('--seed-map', path.join(rootDir, 'mask_map.json'));
     // Задлалтыг тусдаа процесст ажиллуулна — том Excel серверийг гацаахгүй
     const ex = await runProcess(process.execPath, exArgs, { cwd: PATHS.root, onSpawn: c => ctl.children.add(c) }, line => {
@@ -397,6 +399,11 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
         imageNote = `${images.length} evidence image(s) were uploaded but withheld for privacy; you cannot see them. If a finding depends on them, mark it 'Evidence not reviewable — image withheld'.`;
       }
     }
+    // Тайлан доторх зураг ([IMG#] мөр): зөвшөөрсөн бол report_images/-д, үгүй бол харагдахгүй
+    const repDir = path.join(sandbox, 'report_images');
+    if (fs.existsSync(repDir) && fs.readdirSync(repDir).length)
+      imageNote += ` Pictures embedded in the report are in report_images/ (not masked); each "[IMG#] … → report_images/IMG#.png" line in the report text marks where one sits. Open the ones that carry content (charts, matrices, screenshots, scanned tables) and check their numbers, labels and titles against the text, tables and captions. For an issue in a picture use the anchor of the nearest paragraph or row, name the picture (IMG#, its caption) in the issue text, and set "quote": "".`;
+    else imageNote += ` Pictures embedded in the report ("[IMG#]" lines) were not sent${job.send_images ? '' : ' (the user did not allow images)'}; you cannot see them — do not guess their content.`;
 
     // ---- AI Run бүртгэл (DOC-1917 Хав. А.2): ID, эх баримтын hash, prompt архив ----
     const cycle = rootDir ? (job.round || 1) + 1 : 1;
@@ -441,7 +448,7 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
       addEvent(jobDir, 'system', prev.fallback
         ? `Захирал санал шийдвэрлээгүй тул татгалзаагүй ${prev.length} саналыг шалгана`
         : `Захирлын зөвшөөрсөн ${prev.length} саналыг засварласан тайлантай тулгана`);
-      prompt = buildRecheckPrompt(job, prev.length, mask, cycle);
+      prompt = buildRecheckPrompt(job, prev.length, mask, cycle, imageNote);
     } else {
       // Захирлын өмнөх шийдвэрээс суралцах: бусад тайлангийн REJECTED / EDITED / гараар нэмсэн санал
       try { lessons = LS.collect({ excludeDir: jobDir }); } catch (e) { addEvent(jobDir, 'system', 'Сургамж цуглуулахад алдаа: ' + e.message); }

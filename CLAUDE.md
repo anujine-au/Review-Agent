@@ -7,7 +7,7 @@
 1. `prompts/system_prompt.md`-ийг бүтнээр уншиж, дүрээ (Senior Internal Audit Report Reviewer) болон бүх дүрмийг мөрд.
 2. `config/decision_rules.md` (зэрэглэл, эцсийн санал), `config/writing_standard.md` (ДАГ-ын бичгийн стандарт, зөвлөмжийн хугацааны матриц)-ийг унш.
 3. Файлуудыг задал: `node server/extract.js --in input --out work/extracted` → `work/extracted/*.txt` ба `*.profile.txt`.
-   - `.docx` → `[P#]` догол мөр, `T#R#` хүснэгтийн мөр.
+   - `.docx` → `[P#]` догол мөр (`[№ 1.]` жагсаалтын дугаар), `T#R#` хүснэгтийн мөр (`↑` / `←` нэгтгэсэн нүд); header/footer/зүүлт, `[CH#]` Word-ийн диаграм, `[DG#]` SmartArt, `[TB#]` текст хайрцаг, `[IMG#]` зураг (`--images-out` өгвөл зургийг бичнэ — зөвхөн хэрэглэгч зураг илгээхийг зөвшөөрсөн үед), `COLOR-MARKED` хэсэг.
    - `.xlsx` → `SHEET: <нэр>`, мөр бүр `R<Excel мөрийн дугаар>` + tab-аар тусгаарлагдсан утга, томьёо `{=...}`, огноо `YYYY-MM-DD`.
    - `*.profile.txt` → мөрийн тоо, нийлбэр, давхардал, ангиллаар бүлэглэсэн дүн.
    - `.doc` / `.xls` дэмжигдэхгүй — хэрэглэгчээс `.docx` / `.xlsx` болгож хадгалахыг хүс. Зураг (screenshot)-ийг Read tool-оор шууд уншина.
