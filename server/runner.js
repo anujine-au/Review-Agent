@@ -134,7 +134,7 @@ function buildRecheckPrompt(job, count, mask, cycle) {
 Files (paths relative to the current directory):
 - previous/previous_issues.json — the approved comments: id, severity (R1–R4), module, rule, title, issue, required_action (the director's edited text when edited), resolution_check, old anchor and old quote (these refer to the OLD report).
 - extracted/report__*.txt — the REVISED report. Every paragraph starts with [P#]; table rows start with T#R#. PDF paragraphs show (х.N).
-  If the auditor colour-marked text in Word (highlight, shading, font colour or tracked insertions), the file ends with a "=== COLOR-MARKED TEXT ===" section: lines "MARK P12 {highlight:yellow} …" copy that marked text. Auditors usually mark what they changed — check these places first, both for previous comments and for new_issues. Unmarked text may also have changed, so do not rely on the marks alone. Take "quote" from the [P#] / T#R# line, never from a MARK line.
+  If the auditor colour-marked text in Word (highlight, shading, font colour, whole-cell fill or tracked insertions), the file ends with a "=== COLOR-MARKED TEXT ===" section: lines "MARK P12 {highlight:yellow} …" copy that marked text. Auditors usually mark what they changed — check these places first, both for previous comments and for new_issues. Unmarked text may also have changed, so do not rely on the marks alone. Take "quote" from the [P#] / T#R# line, never from a MARK line.
 - extracted/excel__*.txt and *.profile.txt — Excel files, if the auditor uploaded them again (may be absent).
 - agent/prompts/system_prompt.md (criteria catalog), agent/config/decision_rules.md (dependency matrix §4, M14 rules) and agent/config/writing_standard.md — for reference.
 

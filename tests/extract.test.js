@@ -36,6 +36,16 @@ test('цагаан highlight, загварын саарал / бараан өн�
   assert.deepStrictEqual(r.lines.filter(l => l.startsWith('MARK ')), ['MARK P2 {font:#FF0000} Улаан гарчиг']);
 });
 
+test('нүдийг бүхэлд нь будсаныг тооцно; толгой мөр, хөх / саарал загварын өнгийг тооцохгүй', () => {
+  const tc = (fill, t) => `<w:tc>${fill ? `<w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:tcPr>` : ''}<w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`;
+  const r = convertDocx(docx('<w:tbl>' +
+    `<w:tr>${tc('FFC000', 'Толгой')}${tc('FFC000', 'Дүн')}</w:tr>` +
+    `<w:tr>${tc('D9E2F3', 'Шошго')}${tc('FFF2CC', '1,855.0')}</w:tr>` +
+    `<w:tr>${tc('F2F2F2', 'Саарал')}${tc('FFC000', 'Толгойн өнгө')}</w:tr>` +
+    `<w:tr>${tc('', 'Энгийн')}${tc('92D050', 'Ногоон')}</w:tr></w:tbl>`));
+  assert.deepEqual(r.lines.filter(l => l.startsWith('MARK ')), ['MARK T1R2 {cell:#FFF2CC} 1,855.0', 'MARK T1R4 {cell:#92D050} Ногоон']);
+});
+
 test('өнгөгүй тайланд COLOR-MARKED хэсэг нэмэгдэхгүй', () => {
   const r = convertDocx(docx('<w:p><w:r><w:rPr><w:color w:val="000000"/><w:highlight w:val="none"/></w:rPr><w:t>Хар</w:t></w:r></w:p>'));
   assert.equal(r.marks, 0);

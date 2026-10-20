@@ -124,18 +124,29 @@ function paragraphKind(p, text) {
   return 'p';
 }
 // Өнгөөр тэмдэглэсэн хэсэг (аудитор засварласан хэсгээ ихэвчлэн ингэж тэмдэглэдэг): run-ий highlight, shading,
-// үсгийн өнгө, track changes-ийн оруулга. Догол мөр / нүдний бүхэлдээ shading (загварын толгой) тооцохгүй.
+// үсгийн өнгө, track changes-ийн оруулга, нүдний бүхэлдээ будалт. Догол мөрийн бүхэлдээ shading тооцохгүй.
 // Цагаан highlight (харагдахгүй), саарал / бараан / цайвар үсгийн өнгө нь загварынх тул тэмдэглэгээ биш.
 // Гарчигт хөх өнгө нь загварынх — гарчигт зөвхөн хөхөөс бусад тод өнгийг (улаан, ногоон г.м.) тооцно.
-function vividColor(hex, inHeading) {
-  if (!/^[0-9a-f]{6}$/i.test(hex)) return false;
+function hsl(hex) {
+  if (!/^[0-9a-f]{6}$/i.test(hex || '')) return null;
   const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
-  if (s < 0.25 || l < 0.3 || l > 0.85) return false;
-  if (!inHeading) return true;
-  const h = max === r ? (60 * ((g - b) / d) + 360) % 360 : max === g ? 60 * ((b - r) / d) + 120 : 60 * ((r - g) / d) + 240;
-  return h < 180 || h > 260;
+  const h = d === 0 ? 0 : max === r ? (60 * ((g - b) / d) + 360) % 360 : max === g ? 60 * ((b - r) / d) + 120 : 60 * ((r - g) / d) + 240;
+  return { h, s, l };
+}
+const isBlue = c => c.h >= 180 && c.h <= 260;
+function vividColor(hex, inHeading) {
+  const c = hsl(hex);
+  if (!c || c.s < 0.25 || c.l < 0.3 || c.l > 0.85) return false;
+  return !inHeading || !isBlue(c);
+}
+// Нүдний будалт: загварын толгой, шошгын нүд нь ихэвчлэн хөх / саарал, эсвэл хүснэгтийн эхний мөрийн өнгө.
+// Цайвар өнгө (цайвар шар г.м.) нүдэнд тэмдэглэгээ байж болно.
+function cellFill(tc, headerFills) {
+  const fill = (attr(kid(kid(tc, 'tcPr'), 'shd'), 'fill') || '').toUpperCase(), c = hsl(fill);
+  if (!c || fill === 'FFFFFF' || c.s < 0.25 || isBlue(c) || headerFills.has(fill)) return '';
+  return fill;
 }
 function runMark(r, inIns, inHeading) {
   const rPr = kid(r, 'rPr'), out = [];
@@ -172,6 +183,8 @@ function convertDocx(buf) {
   if (!xml) throw new Error('word/document.xml олдсонгүй');
   const body = desc(parseXml(xml), 'body')[0];
   const lines = [], blocks = [], marks = [];
+  const headerFills = new Set(desc(body, 'tbl').flatMap(t => kids(kids(t, 'tr')[0], 'tc'))
+    .map(tc => (attr(kid(kid(tc, 'tcPr'), 'shd'), 'fill') || '').toUpperCase()));
   const addMarks = (anchor, segs) => { for (const s of segs) marks.push(`MARK ${anchor} {${s.mark}} ${s.text.trim()}`); };
   let pNo = 0, tNo = 0;
   (function walk(nodes) {
@@ -193,7 +206,11 @@ function convertDocx(buf) {
         kids(x, 'tr').forEach((tr, i) => {
           const cells = kids(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
           lines.push(`T${tNo}R${i + 1} | ` + cells.join(' | '));
-          addMarks(`T${tNo}R${i + 1}`, desc(tr, 'p').flatMap(p => markedSegments(p, false)));
+          const tcs = kids(tr, 'tc');
+          addMarks(`T${tNo}R${i + 1}`, tcs.flatMap((tc, j) => {
+            const fill = i ? cellFill(tc, headerFills) : '';
+            return fill && cells[j] ? [{ mark: 'cell:#' + fill, text: cells[j] }] : desc(tc, 'p').flatMap(p => markedSegments(p, false));
+          }));
           rows.push(cells);
         });
         lines.push(`=== END TABLE ${tNo} ===`, '');
@@ -203,7 +220,7 @@ function convertDocx(buf) {
       }
     }
   })(body ? body.c : []);
-  if (marks.length) lines.push('', '=== COLOR-MARKED TEXT (highlight / shading / font color / tracked insert) ===',
+  if (marks.length) lines.push('', '=== COLOR-MARKED TEXT (highlight / shading / font color / tracked insert / cell fill) ===',
     '# Дээрх [P#] / T#R# доторх өнгөөр тэмдэглэсэн хэсгийн хуулбар. Ишлэл (quote)-ийг эх мөрөөс нь авна.', ...marks, '=== END COLOR-MARKED ===');
   return { lines, blocks, marks: marks.length };
 }
