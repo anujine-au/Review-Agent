@@ -848,6 +848,139 @@ mark[data-issue] { cursor: pointer; }
   .row { flex-wrap: nowrap; break-inside: avoid; } .row .para { flex: 1 1 auto; } .row .side { flex: 0 0 300px; min-width: 0; }
   .wrap { padding: 0; max-width: none; }
 }
+/* ---------- Тайлан хянах хуудас (2026-10 загвар) ---------- */
+body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
+.avatar { background: var(--accent); color: var(--accent-text); width: 32px; height: 32px; font-size: 13px; }
+#userChip .uw { display: grid; text-align: left; line-height: 1.25; }
+@media (max-width: 560px) { #userChip .uw { display: none; } }
+.job-head { display: block; margin-bottom: 16px; }
+.jh-top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.backlink { border: 0; background: none; padding: 4px 0; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; }
+.backlink:hover { text-decoration: underline; }
+.jh-tags { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.jh-code { font-size: 12.5px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.pill { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 6px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pill.accent { background: var(--accent-2); color: var(--accent); }
+.pill.st-done { background: var(--ok-bg); color: var(--ok); }
+.pill.st-running, .pill.st-extracting, .pill.st-queued, .pill.st-pending { background: var(--accent-2); color: var(--accent); }
+.pill.st-failed, .pill.st-cancelled { background: var(--crit-bg); color: var(--crit); }
+.job-head h1.page { font-size: 28px; line-height: 1.25; max-width: 980px; margin-bottom: 16px; }
+.jh-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 18px; }
+.jh-meta span { display: block; font-size: 11.5px; color: var(--muted); }
+.jh-meta b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 720px) { .jh-meta { grid-template-columns: 1fr 1fr; } .job-head h1.page { font-size: 22px; } }
+
+.wfbar { display: block; padding: 16px 18px; margin: 0 0 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.wfsteps { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wfs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.wfs b { display: block; font-weight: 600; }
+.wfs small { display: block; font-size: 11px; color: var(--muted); }
+.wfs-n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1.5px solid var(--border-strong); background: var(--surface); color: var(--muted); flex: none; }
+.wfs.done .wfs-n { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.rtile.rc-REGRESSED span { color: var(--crit); }
+.wfs.cur .wfs-n { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.wfs.cur b, .wfs.done b { color: var(--text); }
+.wfs-line { width: 44px; height: 1.5px; background: var(--border-strong); flex: none; }
+.wf-info { font-size: 12px; max-width: 520px; }
+.wf-v { font-weight: 700; color: var(--accent); }
+@media (max-width: 560px) { .wfs-line { display: none; } }
+.wfacts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+
+.rsum { padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 18px; }
+.rsum-top { display: flex; gap: 16px; align-items: flex-start; }
+.rsum-main { flex: 1; min-width: 0; }
+.rsum-vd { display: flex; gap: 10px; align-items: flex-start; font-size: 22px; font-weight: 700; line-height: 1.3; margin: 2px 0 8px; color: var(--text); }
+.rsum-vd.fail, .rsum-vd.esc { color: var(--crit); } .rsum-vd.rev { color: var(--major); } .rsum-vd.pass { color: var(--ok); }
+.vd-ic { width: 24px; height: 24px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 13px; flex: none; margin-top: 3px; }
+.rsum-text { font-size: 14.5px; color: var(--text-2); max-width: 640px; }
+.rsum-pct { text-align: right; flex: none; }
+.rsum-pct b { display: block; font-size: 44px; line-height: 1; font-weight: 800; color: var(--ok); letter-spacing: -.02em; }
+.rsum-pct span { font-size: 12px; color: var(--muted); }
+.rsum .rcbar { height: 8px; }
+.rtiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.rtile { --tc: var(--muted); text-align: left; border: 1px solid color-mix(in srgb, var(--tc) 30%, var(--border)); background: color-mix(in srgb, var(--tc) 9%, var(--surface)); border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; min-height: 76px; font: inherit; }
+.rtile span { font-size: 12.5px; font-weight: 600; color: var(--tc); line-height: 1.3; }
+.rtile .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--tc); margin-right: 6px; }
+.rtile b { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; margin-top: 4px; }
+.rtile.all { background: var(--text); border-color: var(--text); }
+.rtile.all span, .rtile.all b { color: var(--surface); }
+.rtile.on { box-shadow: 0 0 0 2px var(--accent); }
+.rtile.all:not(.on) { background: var(--surface-2); border-color: var(--border); }
+.rtile.all:not(.on) span, .rtile.all:not(.on) b { color: var(--text); }
+.rtile:hover { filter: brightness(.98); }
+.rsum-foot { font-size: 11.5px; color: var(--muted); }
+.undwarn { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 10px; }
+.und-ic { color: var(--major); font-size: 18px; line-height: 1.2; }
+.und-main { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
+.und-main > b { color: var(--major); font-size: 14px; }
+.undwarn .ref { text-decoration: none; }
+.undi { border: 0; background: transparent; padding: 2px 0; color: var(--text); font-weight: 600; white-space: normal; text-align: left; max-width: 100%; }
+.undi:hover { color: var(--accent); }
+.btn.undgo { background: var(--major); border-color: var(--major); color: var(--surface); font-weight: 600; align-self: center; }
+@media (max-width: 720px) { .rsum-top { flex-direction: column; } .rsum-pct { text-align: left; } .undwarn { flex-wrap: wrap; } }
+
+.doc-tools { display: grid; gap: 10px; margin-bottom: 18px; }
+.dt-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dt-l { font-size: 12.5px; color: var(--muted); margin-right: 4px; }
+.doc-tools label { margin-left: 0; color: var(--text-2); }
+.fchip { padding: 5px 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.fchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.fchip .dot.R1 { background: var(--crit); } .fchip .dot.R2 { background: var(--major); } .fchip .dot.R3 { background: var(--minor); } .fchip .dot.R4 { background: #7c4dcc; }
+.sec-h { font-size: 17px; font-weight: 700; margin: 0 0 12px; }
+.sec-h span { font-weight: 500; color: var(--muted); font-size: 14px; }
+.general { padding: 0; margin-bottom: 26px; background: none; border: 0; box-shadow: none; }
+.general .cmts { grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 14px; }
+@media (max-width: 560px) { .general .cmts { grid-template-columns: minmax(0, 1fr); } }
+.doc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 10px; }
+.doc-head .sec-h { margin: 0; }
+.doc-fname { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.addhint { padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)); border-radius: 8px; margin: 0 0 14px; font-size: 12.5px; color: var(--text-2); }
+
+/* Тэмдэглэлийн карт */
+.cmt { border-radius: 10px; box-shadow: var(--shadow); position: relative; }
+.cmt-s { flex-wrap: wrap; padding: 12px 34px 12px 14px; gap: 6px; }
+.cmt-s .chev { position: absolute; top: 14px; right: 12px; }
+.cmt-t { flex: 1 1 100%; font-size: 14.5px; line-height: 1.4; margin-top: 2px; }
+.cmt-b { padding: 0 14px 14px; }
+.cmt .old { font-size: 11.5px; }
+.cmt .fix { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.cmt .fix b { color: var(--accent); font-size: 10.5px; margin-bottom: 3px; }
+.cmt-meta { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 10px; }
+.cmt.is-ok { background: var(--surface); }
+.cmt.is-ok .sev { opacity: 1; }
+.cmt.is-ok .cmt-t { color: var(--text); }
+.decide { margin-top: 12px; }
+.decide .btn.acc { background: var(--ok); border-color: var(--ok); color: var(--surface); font-weight: 600; }
+.decide .btn.acc.on { box-shadow: 0 0 0 2px var(--ok-bg), 0 0 0 3px var(--ok); }
+.decide .btn.rej { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 35%, var(--border)); }
+
+/* Тайлангийн эх: мөр бүр тусдаа карт, тэмдэглэл баруун талд */
+.doc { padding: 0; overflow: visible; background: none; border: 0; box-shadow: none; display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); gap: 10px; border: 0; align-items: start; }
+.row .para { background: var(--paper); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 14px 20px 14px 46px; border-left-width: 1px; }
+.row.has-c .para, .row.sev-R1 .para, .row.sev-R2 .para, .row.sev-R4 .para, .row.sev-OK .para { border-left-color: var(--border); }
+.row .para .pid { top: 17px; left: 14px; }
+.row .side { background: none; padding: 0; min-width: 0; max-width: none; gap: 8px; }
+.row:not(.has-c) .side { padding: 0; }
+.addc { opacity: .7; padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 8px; }
+.gap { width: auto; max-width: 100%; justify-self: start; flex-wrap: wrap; text-align: left; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface); padding: 6px 12px; }
+.para table { border: 0; }
+.para td { border: 0; border-bottom: 1px solid var(--border); padding: 9px 10px; }
+.para tr:first-child td { background: none; font-weight: 600; color: var(--text-2); }
+.para tr.hl td { background: var(--major-bg); }
+.toc { border-radius: var(--radius); padding: 14px 8px; box-shadow: var(--shadow); }
+.toc a { align-items: flex-start; padding: 7px 10px; }
+.toc a span { white-space: normal; }
+.toc a .dot { margin-top: 5px; background: var(--border-strong); }
+.toc a.lv0 { background: none; }
+.toc a b.n { font-size: 11px; font-weight: 700; padding: 0 7px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); line-height: 18px; }
+.toc a b.n.R1 { background: var(--crit-bg); color: var(--crit); }
+.toc-leg { display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--border); margin-top: 10px; padding: 10px 10px 0; font-size: 11px; color: var(--muted); }
+.toc-leg span { display: inline-flex; align-items: center; gap: 4px; }
+.toc-leg .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.toc-leg .dot.R1 { background: var(--crit); } .toc-leg .dot.R2 { background: var(--major); } .toc-leg .dot.R3 { background: var(--minor); }
+@media (max-width: 1000px) { .row { grid-template-columns: minmax(0, 1fr); } }
+.row > *, .doc > * { min-width: 0; }
 </style>
 </head>
 <body>
@@ -1276,7 +1409,7 @@ async function enterApp() {
   if (me.must_change) { voluntaryChange = false; showLoginView(); setLoginMode('change', 'Түр нууц үгээ өөрийн нууц үгээр солино уу.'); return; }
   $('#vLogin').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#top').classList.remove('hidden');
   const uname = me.open ? (whoGet().name || 'Нэр сонгоогүй') : (me.user || me.name || '');
-  $('#userChip').innerHTML = `<span class="avatar" aria-hidden="true">${esc(uname.replace(/^ip:/, '').slice(0, 1) || '?')}</span><span class="un">${esc(uname)}</span><span class="ur">${esc(me.role_label || '')}</span>`;
+  $('#userChip').innerHTML = `<span class="avatar" aria-hidden="true">${esc(uname.replace(/^ip:/, '').slice(0, 1) || '?')}</span><span class="uw"><span class="un">${esc(uname)}</span><span class="ur">${esc(me.role_label || '')}</span></span>`;
   $('#userChip').title = `${me.name || me.user} · ${me.role_label}`;
   $('#newBtn').classList.toggle('hidden', !canDo('job.create') || me.role === 'viewer');
   $('#usersBtn').classList.toggle('hidden', !canDo('users.manage'));
@@ -2299,14 +2432,15 @@ function renderJob() {
   const active = ACTIVE.includes(j.status);
   const title = a.name || (current.findings?.audit?.name) || a.code || 'Нэргүй review';
   const files = (j.files || []).map(f => esc(f.name)).join(', ');
+  const code = a.code || current.findings?.audit?.code, branch = a.branch || current.findings?.audit?.branch;
+  const ver = j.version_no || j.cycle_no || (j.parent_id ? (j.round || 1) + 1 : 1);
+  const by = j.created_by && !/^ip:/.test(j.created_by) ? String(j.created_by).replace(/^name:/, '') : '';
+  const metaCell = (l, v) => `<div><span>${l}</span><b>${v || '—'}</b></div>`;
   let html = `
   <div class="job-head">
-    <button class="btn ghost sm back" data-go="list">←</button>
-    <div style="flex:1;min-width:240px">
-      <div class="eyebrow">${(a.code || current.findings?.audit?.code) ? esc(a.code || current.findings?.audit?.code) + ' · ' : ''}${j.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'}<span class="cyc" title="Хувилбар">v${esc(j.version_no || j.cycle_no || (j.parent_id ? (j.round || 1) + 1 : 1))}</span></div>
-      <h1 class="page">${esc(title)}</h1>
-      <div class="meta">${[a.code || current.findings?.audit?.code, a.branch || current.findings?.audit?.branch].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join('')}<span>${esc(fmtDate(j.created))}</span>${j.created_by && !/^ip:/.test(j.created_by) ? `<span>${esc(String(j.created_by).replace(/^name:/, ''))}</span>` : ''}${j.parent ? (j.parent.missing ? '<span>Анхны review устгагдсан</span>' : `<a href="#job/${esc(j.parent.id)}">← v1 (анхны)</a>`) : ''}<span class="status ${j.status}">${STATUS_MN[j.status] || j.status}</span></div>
-    </div>
+    <div class="jh-top">
+      <button class="backlink" data-go="list">‹ Бүх тайлан руу буцах</button>
+      <span class="spacer"></span>
     <div class="acts">
       ${(current.finalHtml = (() => {   // S10 Эцсийн батлалт — ажлын урсгалын самбарт харагдана
         if (j.status !== 'done' || j.parent_id || j.finalized || !canDo('job.finalize') || (j.workflow && j.workflow.state !== 'CAE_REVIEW') || (j.can && !j.can.finalize)) return '';
@@ -2335,6 +2469,15 @@ function renderJob() {
       </div></details>
       ${j.docs?.url ? `<a class="btn sm" href="${esc(j.docs.url)}" target="_blank" rel="noopener noreferrer" title="Сүүлд синк: ${esc(fmtDate(j.docs.last_sync || j.docs.published_at))}">☁ Docs нээх</a>` : ''}` : ''}
       ${active ? ((canDo('job.cancelAny') || (j.created_by === me.user && canDo('job.create'))) ? `<button class="btn sm danger" id="cancelBtn">Зогсоох</button>` : '') : (canDel(j) ? `<button class="btn sm danger" id="delBtn" title="Энэ тайлангийн бүх хувилбарыг бүрмөсөн устгана">🗑 Устгах</button>` : '')}
+    </div>
+    </div>
+    <div class="jh-tags">${code ? `<span class="jh-code">${esc(code)}</span>` : ''}<span class="pill accent">${j.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'} · v${esc(ver)}</span><span class="pill st-${j.status}">${j.status === 'done' ? 'AI шалгалт дууссан' : esc(STATUS_MN[j.status] || j.status)}</span></div>
+    <h1 class="page">${esc(title)}</h1>
+    <div class="card jh-meta">
+      ${metaCell('Салбар', esc(branch || ''))}
+      ${metaCell('Илгээсэн огноо', esc(fmtDate(j.created).replace(' ', ' · ')))}
+      ${metaCell('Илгээсэн', esc(by))}
+      ${j.parent_id ? metaCell('Өмнөх хувилбар', j.parent ? (j.parent.missing ? 'Анхны review устгагдсан' : `<a href="#job/${esc(j.parent.id)}">v1 (анхны) харах</a>`) : '') : metaCell('Аудитын код', esc(code || ''))}
     </div>
   </div>`;
 
@@ -2555,9 +2698,11 @@ function undecidedWarn(issues) {
   const d = current.job?.decisions || {};
   const und = issues.filter(x => !decOf(d[x.id]));
   if (!und.length) return '';
-  return `<div class="undwarn"><b>⚠ ${und.length} санал шийдвэрлэгдээгүй байна — энд байна:</b>
-    <div class="undlist">${und.slice(0, 12).map(x => `<button class="undi ref" data-issue="${esc(x.id)}" title="Дарж тэмдэглэлийг нээх"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${esc(plain(shortTitle(x)))}</button>`).join('')}${und.length > 12 ? `<span class="sub">… +${und.length - 12}</span>` : ''}</div>
-    <div class="sub">Шийдвэрлээгүй санал «Батлаад илгээх» үед аудиторт очихгүй.</div></div>`;
+  return `<div class="undwarn"><span class="und-ic" aria-hidden="true">⚠</span>
+    <div class="und-main"><b>Шийдвэрлээгүй ${und.length} санал байна</b>
+      <div class="sub">Шийдвэрлээгүй санал «Батлаад илгээх» үед аудиторт очихгүй.</div>
+      <div class="undlist">${und.slice(0, 12).map(x => `<button class="undi ref" data-issue="${esc(x.id)}" title="Дарж тэмдэглэлийг нээх"><span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${esc(plain(shortTitle(x)))}</button>`).join('')}${und.length > 12 ? `<span class="sub">… +${und.length - 12}</span>` : ''}</div></div>
+    <button class="btn undgo ref" data-issue="${esc(und[0].id)}">Одоо шийдвэрлэх</button></div>`;
 }
 // Анхны review дээр: засварласан хувилбарын шалгалтууд
 function rechecksStrip(j) {
@@ -2596,14 +2741,23 @@ function renderRecheck(j) {
   const vd = verdictOf({ verdict: current.recheck.verdict });
   const left = n('NOT_RESOLVED') + n('REGRESSED') + n('PARTIAL');
   const fixedN = n('RESOLVED'), newN = n('NEW');
-  let html = `<div class="card sumcard ${VERDICT_CLS[vd] || ''}">
-    <div class="sum-top">${vd ? `<span class="vpill ${VERDICT_CLS[vd]}">${esc(VERDICT_MN[vd])}</span>` : ''}</div>
-    <div class="sum-head">Өмнөх ${prevN} саналаас <b>${fixedN}</b> засагдсан${left ? `, <b>${left}</b> засагдаагүй эсвэл дутуу` : ''}${newN ? `; засварласан хэсэгт <b>${newN}</b> шинэ санал` : ''}.</div>
+  const dc = VERDICT_CLS[vd] || '';
+  const pct = prevN ? Math.round(100 * fixedN / prevN) : 0;
+  const icon = dc === 'esc' ? '‼' : dc === 'fail' ? '!' : dc === 'rev' ? '!' : '✓';
+  // Төлөвийн хавтанцар — дарвал шүүнэ (тэгтэй төлөвийг харуулахгүй)
+  const tile = (k, label, cnt, color) => `<button class="rtile ${k === 'ALL' ? 'all' : 'rc-' + k}${rcFilter === k ? ' on' : ''}" data-rc="${k}"${color ? ` style="--tc:${color}"` : ''}><span>${k === 'ALL' ? '' : '<i class="dot"></i>'}${label}</span><b>${cnt}</b></button>`;
+  let html = `<div class="card rsum ${dc}">
+    <div class="rsum-top">
+      <div class="rsum-main"><div class="eyebrow">Дүгнэлт</div>
+        ${vd ? `<div class="rsum-vd ${dc}"><span class="vd-ic" aria-hidden="true">${icon}</span>${esc(VERDICT_MN[vd])}</div>` : ''}
+        <div class="rsum-text">Өмнөх <b>${prevN}</b> саналаас <b>${fixedN}</b> нь засагдсан${left ? `, <b>${left}</b> нь засагдаагүй эсвэл дутуу` : ''}.${newN ? ` Засварласан хэсэгт <b>${newN}</b> шинэ санал гарсан.` : ''}</div></div>
+      <div class="rsum-pct"><b>${pct}%</b><span>саналын засагдсан хувь</span></div>
+    </div>
     <div class="rcbar" role="img" aria-label="Засварын явц">${Object.entries(RC).map(([k, v]) => n(k) ? `<div style="width:${100 * n(k) / total}%;background:${v[2]}" title="${v[0]} ${n(k)}"></div>` : '').join('')}</div>
-    <div class="rc-chips"><span class="sub">Төлөвөөр:</span><button class="fchip ${rcFilter === 'ALL' ? 'on' : ''}" data-rc="ALL">Бүгд <span class="k">${all.length}</span></button>${Object.entries(RC).filter(([k]) => n(k)).map(([k, v]) => `<button class="fchip ${rcFilter === k ? 'on' : ''}" data-rc="${k}"><i class="dot" style="background:${v[2]}"></i>${v[0]} <span class="k">${n(k)}</span></button>`).join('')}</div>
+    <div class="rtiles">${tile('ALL', 'Бүгд', all.length)}${Object.entries(RC).filter(([k]) => n(k)).map(([k, v]) => tile(k, v[0].replace(/^✓\s*/, ''), n(k), v[2])).join('')}</div>
     ${missing ? `<div class="v-q" style="color:var(--crit)">⚠ ${missing} саналд агент хариу өгөөгүй — гараар шалгана уу.</div>` : ''}
     ${undecidedWarn(all.filter(x => x.is_new))}
-    <div class="sum-foot"><span class="v-ai">AI-ийн санал — засвар хангалттай эсэхийг ДАГ-ын захирал шийдвэрлэнэ.${newN ? ' «Шинэ санал» нь зөвхөн өөрчлөгдсөн хэсгээс илэрсэн.' : ''}</span></div>
+    <div class="rsum-foot">AI-ийн санал — засвар хангалттай эсэхийг ДАГ-ын захирал шийдвэрлэнэ.${newN ? ' «Шинэ санал» нь зөвхөн өөрчлөгдсөн хэсгээс илэрсэн.' : ''}</div>
   </div>`;
   const issues = all.filter(x => rcFilter === 'ALL' || x.recheck_status === rcFilter);
   html += `<div style="margin-top:16px">${renderAnnotated({}, issues)}</div>`;
@@ -2866,29 +3020,36 @@ function workflowBar(j, finalHtml) {
   const w = j.workflow; if (!w || j.parent_id && !j.can) return '';
   const c = j.can || {};
   const btn = [];
-  if (w.state === 'CAE_REVIEW' && c.release) btn.push(`<button class="btn sm primary" data-wf="release" title="Шийдвэрлэсэн саналуудыг аудиторт илгээнэ">Батлаад илгээх (аудиторт буцаах)</button>`);
+  // Үндсэн үйлдэл (primary) нь мөрийн төгсгөлд
+  const main = [];
+  if (w.state === 'CAE_REVIEW' && c.release) main.push(`<button class="btn primary" data-wf="release" title="Шийдвэрлэсэн саналуудыг аудиторт илгээнэ">Батлаад аудиторт буцаах →</button>`);
   const isLatest = !w.latest || w.latest === current.id;
   if (['SUBMITTED', 'RESUBMITTED'].includes(w.state) && c.runAI && isLatest && ['pending', 'failed', 'cancelled'].includes(j.status))
-    btn.push(`<button class="btn sm primary" data-wf="ai" title="Энэ тайланг AI-аар шалгуулна. Дуусахыг хүлээх хооронд бусад тайланг хянаж болно">${j.status === 'pending' ? '🤖 AI хянуулах' : '↻ AI дахин хянуулах'}</button>`);
-  if (finalHtml) btn.push(finalHtml);
-  if (w.state === 'APPROVED_FINAL' && c.downloadFinal) btn.push(`<details class="dlmenu"><summary class="btn sm primary">⬇ Эцсийн тайлан ▾</summary><div class="dlmenu-list">
+    main.push(`<button class="btn primary" data-wf="ai" title="Энэ тайланг AI-аар шалгуулна. Дуусахыг хүлээх хооронд бусад тайланг хянаж болно">${j.status === 'pending' ? '🤖 AI хянуулах' : '↻ AI дахин хянуулах'}</button>`);
+  if (finalHtml) main.push(finalHtml);
+  if (w.state === 'APPROVED_FINAL' && c.downloadFinal) main.push(`<details class="dlmenu"><summary class="btn primary">⬇ Эцсийн тайлан ▾</summary><div class="dlmenu-list">
       <button class="dl" data-final="docx"><b>Тайлан (.docx)</b><span>Аудиторын сүүлийн хувилбар, эх хэлбэрээр</span></button>
       <button class="dl" data-final="pdf"><b>Тайлан (PDF)</b><span>Нүүрэнд бүртгэлийн дугаар, огноо, батлагч</span></button>
       <button class="dl" data-final="zip"><b>Бүх хувилбар + хяналтын түүх (.zip)</b><span>v1…vn эх файл, feedback бүр, approval.json</span></button></div></details>`);
-  if (!['APPROVED_FINAL', 'CANCELLED'].includes(w.state) && c.cancelWorkflow) btn.push(`<button class="btn sm ghost" data-wf="cancel">Цуцлах</button>`);
   // Аль ч хувилбарын эх файл — хувилбар бүрээр, эсвэл бүгдийг ZIP (аль ч хувилбарын хуудаснаас)
   wfLoad();
   const vs = (current.wf && current.wf.versions) || [];
-  if (vs.length) btn.push(`<details class="dlmenu"><summary class="btn sm">⬇ Эх файл (v1${vs.length > 1 ? '–v' + vs.length : ''}) ▾</summary><div class="dlmenu-list" style="min-width:360px">
+  if (vs.length) btn.push(`<details class="dlmenu"><summary class="btn">🗎 Эх файл (v1${vs.length > 1 ? '–v' + vs.length : ''}) ▾</summary><div class="dlmenu-list" style="min-width:360px">
       ${vs.slice().reverse().map(v => `<div class="dlh">v${v.version} · ${v.version === 1 ? 'Анхны илгээлт' : 'Засварласан хувилбар'} <span class="sub">${esc(fmtDate(v.submitted_at || v.created))}</span></div>${(v.files || []).map(f => f.pending
         ? `<div class="dl" style="opacity:.6"><b>v${v.version}_${esc(f.name)}</b><span>хадгалагдаж байна…</span></div>`
         : `<button class="dl" data-ofile="${esc(f.name)}" data-ocat="${esc(f.cat)}" data-ojob="${esc(v.job)}"><b>v${v.version}_${esc(f.name)}</b><span>${esc(ORIG_CAT[f.cat] || f.cat)}</span></button>`).join('') || '<div class="sub" style="padding:4px 12px">Эх файл хадгалагдаагүй</div>'}`).join('<hr>')}
       <hr><button class="dl" data-ozip><b>Бүх хувилбар (.zip)</b><span>v1/, v2/ … хавтсаар</span></button></div></details>`);
-  btn.push(`<button class="btn sm ghost" data-wf="timeline">${current.wfOpen ? 'Хувилбарын түүх ▴' : 'Хувилбарын түүх ▾'}</button>`);
-  const next = { CAE_REVIEW: c.release ? 'Саналуудыг шийдвэрлээд аудиторт илгээнэ эсвэл эцэслэн батална.' : 'Захирлын шийдвэр хүлээгдэж байна.', RETURNED: 'Аудиторын засвар хүлээгдэж байна.',
+  btn.push(`<button class="btn" data-wf="timeline">🕓 Хувилбарын түүх ${current.wfOpen ? '▴' : '▾'}</button>`);
+  if (!['APPROVED_FINAL', 'CANCELLED'].includes(w.state) && c.cancelWorkflow) btn.push(`<button class="btn ghost" data-wf="cancel">Цуцлах</button>`);
+  const next ={ CAE_REVIEW: c.release ? 'Саналуудыг шийдвэрлээд аудиторт илгээнэ эсвэл эцэслэн батална.' : 'Захирлын шийдвэр хүлээгдэж байна.', RETURNED: 'Аудиторын засвар хүлээгдэж байна.',
     SUBMITTED: 'AI шалгаж байна.', RESUBMITTED: 'AI засварыг шалгаж байна.' }[w.state] || '';
   const next2 = ['SUBMITTED', 'RESUBMITTED'].includes(w.state) && j.status === 'pending' ? 'Хянуулах хүсэлт ирсэн — AI хяналт эхлээгүй.' : ['SUBMITTED', 'RESUBMITTED'].includes(w.state) && ['failed', 'cancelled'].includes(j.status) ? 'AI хяналт тасарсан.' : next;
-  let html = `<div class="wfbar">${wfBadge(w)}<span class="sub">${esc(next2)}</span>${(j.team || []).length ? `<span class="sub">· Баг: ${(j.team || []).map(esc).join(', ')}</span>` : ''}<span class="spacer"></span>${btn.join('')}</div>`;
+  // Алхам: AI шалгалт → Захирлын хяналт → Аудиторт буцаах (эцэслэн батлагдсан бол бүгд дууссан)
+  const at = { DRAFT: 0, SUBMITTED: 0, RESUBMITTED: 0, CAE_REVIEW: 1, RETURNED: 2, APPROVED_FINAL: 3, CANCELLED: 3 }[w.state] ?? 0;
+  const steps = ['AI шалгалт', 'Захирлын хяналт', w.state === 'APPROVED_FINAL' ? 'Эцэслэн батлагдсан' : 'Аудиторт буцаах'].map((s, i) => `${i ? '<i class="wfs-line"></i>' : ''}<div class="wfs ${i < at ? 'done' : i === at ? 'cur' : ''}"><span class="wfs-n">${i < at ? '✓' : i + 1}</span><div><b>${s}</b>${i === at ? '<small>Одоо энд байна</small>' : ''}</div></div>`).join('');
+  const info = [esc(next2), (j.team || []).length ? `Баг: ${(j.team || []).map(esc).join(', ')}` : ''].filter(Boolean).join(' · ');
+  let html = `<div class="card wfbar"><div class="wfsteps">${steps}<span class="spacer"></span>${info ? `<span class="sub wf-info">${w.state === 'CANCELLED' ? 'Цуцлагдсан · ' : ''}${info} <span class="wf-v">v${esc(w.version)}</span></span>` : ''}</div>
+    <div class="wfacts">${btn.join('')}${main.join('')}</div></div>`;
   if (j.cycle_warning) html += `<div class="cyc-warn">⚠ ${w.version} удаа засварлагдлаа (3-аас олон) — Аудитын менежертэй уулзах (QAIP тренд)</div>`;
   if (current.wfOpen) { wfLoad(); html += `<div class="card pad" style="margin-bottom:12px">${timelineHtml()}</div>`; }
   return html;
@@ -3652,19 +3813,22 @@ function renderAnnotated(f, issues) {
     else general.push(x);
   }
   const nSev = s => issues.filter(x => x.severity === s).length;
-  const chip = (k, l, n) => `<button class="fchip ${docFilter === k ? 'on' : ''}" data-filter="${k}">${l}${n !== undefined ? ` <span class="k">${n}</span>` : ''}</button>`;
-  let html = `<div class="doc-tools"><span class="sub">Зэрэглэлээр:</span>${chip('ALL', 'Бүгд', issues.length)}${SEVS.map(s => chip(s, SEV_MN[s], nSev(s))).join('')}${modFilter ? `<button class="fchip on" data-mod="" title="Модулийн шүүлтүүрийг арилгах">${esc(modFilter)} ${esc(MODULES[modFilter] || '')} ✕</button>` : ''}
-    ${doc ? `<label title="Тэмдэглэлгүй догол мөрүүдийг нэг мөрөнд хураана"><input type="checkbox" id="onlyC" ${onlyCommented ? 'checked' : ''}> Тэмдэглэлгүй хэсгийг хураах</label>` : ''}
+  const chip = (k, l, n) => `<button class="fchip ${docFilter === k ? 'on' : ''}" data-filter="${k}">${k === 'ALL' ? '' : `<i class="dot ${k}"></i>`}${l}${n !== undefined ? ` <span class="k">${n}</span>` : ''}</button>`;
+  let html = `<div class="doc-tools"><div class="dt-row"><span class="dt-l">Зэрэглэл</span>${chip('ALL', 'Бүгд', issues.length)}${SEVS.map(s => chip(s, SEV_MN[s].replace(' · ', ' '), nSev(s))).join('')}${modFilter ? `<button class="fchip on" data-mod="" title="Модулийн шүүлтүүрийг арилгах">${esc(modFilter)} ${esc(MODULES[modFilter] || '')} ✕</button>` : ''}</div>
+    <div class="dt-row">${doc ? `<label title="Тэмдэглэлгүй догол мөрүүдийг нэг мөрөнд хураана"><input type="checkbox" id="onlyC" ${onlyCommented ? 'checked' : ''}> Тэмдэглэлгүй хэсгийг хураах</label>` : ''}
     ${canManual() ? `<button class="btn sm" data-addc="" title="Тодорхой догол мөрөнд хамаарахгүй, тайлан бүхэлд хамаарах тэмдэглэл">+ Ерөнхий тэмдэглэл</button>` : ''}
-    <button class="btn sm" id="expandAll" style="${doc ? '' : 'margin-left:auto'}">${expandAll ? 'Бүх тэмдэглэлийг хаах' : 'Бүх тэмдэглэлийг нээх'}</button></div>`;
+    <button class="btn sm" id="expandAll">${expandAll ? 'Бүх тэмдэглэлийг хаах' : 'Бүх тэмдэглэлийг нээх'}</button></div></div>`;
 
   const gen = general.filter(filt);
-  if (gen.length) html += `<div class="card general"><h4>Тайлан бүхэлд хамаарах тэмдэглэл</h4><div class="cmts">${gen.map(x => commentHtml(x)).join('')}</div></div>`;
+  if (gen.length) html += `<div class="general"><h3 class="sec-h">Тайлан бүхэлд хамаарах тэмдэглэл <span>· ${gen.length}</span></h3><div class="cmts">${gen.map(x => commentHtml(x)).join('')}</div></div>`;
   if (!doc) {
     html += `<div class="notice">Тайлангийн эх бичвэр хадгалагдаагүй тул тэмдэглэлүүдийг жагсаалтаар харуулж байна.</div>`;
     return html;
   }
-  html += `<div class="doc-layout">${tocHtml(doc, byBlock, filt)}<div class="card doc"><div class="doc-file">${ftypeBadge('doc')} ${esc(doc.file || 'Тайлан')}<span class="spacer"></span><span>Догол мөрийн хажууд хянагчийн тэмдэглэл</span></div>${canManual() ? '<div class="addhint">✎ Өөрийн тэмдэглэл нэмэх: догол мөр бүрийн баруун талын <b>«+ Тэмдэглэл»</b> дарна (текстийг тодруулж сонгоод дарвал ишлэл болно). Тайлан бүхэлд хамаарах бол дээрх <b>«+ Ерөнхий тэмдэглэл»</b>.</div>' : ''}`;
+  const fext = (String(doc.file || '').match(/\.(\w+)$/) || [])[1];
+  html += `<div class="doc-head"><h3 class="sec-h">Тайлангийн эх ба мөрийн тэмдэглэл</h3><span class="spacer"></span><span class="ftype doc">${esc((fext || 'doc').toUpperCase())}</span><span class="doc-fname">${esc(doc.file || 'Тайлан')}</span></div>
+    ${canManual() ? '<div class="addhint">Мөр бүрт тэмдэглэл нэмэх: мөрийн баруун талын <b>«+ Тэмдэглэл»</b> товчийг дарна (текстийг тодруулж сонгоод ч болно). Бүх тайланд хамаарах бол дээрх <b>«+ Ерөнхий тэмдэглэл»</b>-ийг ашиглана.</div>' : ''}
+    <div class="doc-layout">${tocHtml(doc, byBlock, filt)}<div class="doc">`;
   // Тэмдэглэлгүй дараалсан мөрүүдийг «⋯ N мөр» нэг мөрөнд хураана; дарахад тэр хэсэг л дэлгэгдэнэ
   let gap = [];
   gapOf = {};
@@ -3673,7 +3837,7 @@ function renderAnnotated(f, issues) {
     const key = gap[0].id, head = gap.find(b => /^(title|h\d)$/.test(b.kind) && b.text);
     if (!openGaps.has(key)) gap.forEach(b => { gapOf[b.id] = key; });
     if (openGaps.has(key)) { gap.forEach(b => { html += blockRow(b, []); }); }
-    else html += `<button class="gap" data-gap="${esc(key)}"><span class="gap-dots">⋯</span>${head ? `<b>${esc(head.text.trim().slice(0, 80))}</b> · ` : ''}${gap.length} мөр тэмдэглэлгүй — <u>харах</u></button>`;
+    else html += `<button class="gap" data-gap="${esc(key)}"><span class="gap-dots">⋯</span>${head ? `<b>${esc(head.text.trim().slice(0, 80))}</b> · тэмдэглэлгүй` : 'Тэмдэглэлгүй'} ${gap.length} мөр — <u>харах</u></button>`;
     gap = [];
   };
   for (const b of doc.blocks) {
@@ -3728,11 +3892,11 @@ function tocHtml(doc, byBlock, filt) {
     // Засагдсан (RESOLVED) санал алдаа биш — мөрийн өнгийг зөвхөн засагдаагүйгээр тооцож, бүгд засагдсан бол ногоон
     const open = cs.filter(x => x.recheck_status !== 'RESOLVED');
     const top = open.length ? open.reduce((m, x) => SEV_ORDER[x.severity] < SEV_ORDER[m] ? x.severity : m, 'R4') : (cs.length ? 'OK' : null);
-    return `<a href="#" class="lv${h.lv}" data-toc="${esc(h.id)}" title="${esc(h.text)}">${top ? `<i class="dot ${top}"></i>` : '<i class="dot"></i>'}<span>${esc(h.text.slice(0, 70))}</span>${cs.length ? `<b>${cs.length}</b>` : ''}</a>`;
+    return `<a href="#" class="lv${h.lv}" data-toc="${esc(h.id)}" title="${esc(h.text)}">${top ? `<i class="dot ${top}"></i>` : '<i class="dot"></i>'}<span>${esc(h.text.slice(0, 70))}</span>${cs.length ? `<b class="n ${top || ''}">${cs.length}</b>` : ''}</a>`;
   }).join('');
   const miss = (missing.length ? `<div class="toc-miss" title="Тайлангийн агуулгын жагсаалтад байгаа ч тайлангийн биед ийм дугаартай гарчиг олдсонгүй"><div class="toc-h">Агуулгад бий, тайланд алга</div>${missing.slice(0, 12).map(t => `<div>${esc(t.slice(0, 70))}</div>`).join('')}</div>` : '')
     + (renamed.length ? `<div class="toc-miss warn" title="Ийм дугаартай гарчиг тайланд бий, гэхдээ нэр нь агуулгын жагсаалтаас өөр бичигдсэн"><div class="toc-h">Агуулгатай гарчиг зөрсөн</div>${renamed.slice(0, 12).map(t => `<div>${esc(t.slice(0, 70))}</div>`).join('')}</div>` : '');
-  return `<nav class="toc noprint"><div class="toc-h">Агуулга</div>${rows}${miss}</nav>`;
+  return `<nav class="toc noprint"><div class="toc-h">Агуулга</div>${rows}${miss}<div class="toc-leg"><span><i class="dot R1"></i>Ноцтой</span><span><i class="dot R2"></i>Томоохон</span><span><i class="dot R3"></i>Бага</span></div></nav>`;
 }
 function gotoBlock(id) {
   let el = document.getElementById('b-' + id);
