@@ -125,18 +125,30 @@ function paragraphKind(p, text) {
 }
 // Өнгөөр тэмдэглэсэн хэсэг (аудитор засварласан хэсгээ ихэвчлэн ингэж тэмдэглэдэг): run-ий highlight, shading,
 // үсгийн өнгө, track changes-ийн оруулга. Догол мөр / нүдний бүхэлдээ shading (загварын толгой) тооцохгүй.
-function runMark(r, inIns, colorOk) {
+// Цагаан highlight (харагдахгүй), саарал / бараан / цайвар үсгийн өнгө нь загварынх тул тэмдэглэгээ биш.
+// Гарчигт хөх өнгө нь загварынх — гарчигт зөвхөн хөхөөс бусад тод өнгийг (улаан, ногоон г.м.) тооцно.
+function vividColor(hex, inHeading) {
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return false;
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (s < 0.25 || l < 0.3 || l > 0.85) return false;
+  if (!inHeading) return true;
+  const h = max === r ? (60 * ((g - b) / d) + 360) % 360 : max === g ? 60 * ((b - r) / d) + 120 : 60 * ((r - g) / d) + 240;
+  return h < 180 || h > 260;
+}
+function runMark(r, inIns, inHeading) {
   const rPr = kid(r, 'rPr'), out = [];
   const hl = attr(kid(rPr, 'highlight'), 'val');
-  if (hl && hl !== 'none') out.push('highlight:' + hl);
+  if (hl && !/^(none|white)$/i.test(hl)) out.push('highlight:' + hl);
   const fill = attr(kid(rPr, 'shd'), 'fill');
   if (fill && !/^(auto|FFFFFF)$/i.test(fill)) out.push('shading:#' + fill.toUpperCase());
   const color = attr(kid(rPr, 'color'), 'val');
-  if (colorOk && color && !/^(auto|000000|FFFFFF)$/i.test(color)) out.push('font:#' + color.toUpperCase());
+  if (color && vividColor(color, inHeading)) out.push('font:#' + color.toUpperCase());
   if (inIns) out.push('tracked-insert');
   return out.join(',');
 }
-function markedSegments(p, colorOk) {
+function markedSegments(p, inHeading) {
   const segs = [];
   (function walk(node, inIns) {
     for (const x of node.c || []) {
@@ -144,7 +156,7 @@ function markedSegments(p, colorOk) {
       const l = ln(x.n);
       if (l === 'del' || l === 'pPr') continue;
       if (l === 'r') {
-        const text = paragraphText(x), mark = text ? runMark(x, inIns, colorOk) : '';
+        const text = paragraphText(x), mark = text ? runMark(x, inIns, inHeading) : '';
         if (!mark) { if (text.trim()) segs.push(null); continue; }
         const last = segs[segs.length - 1];
         if (last && last.mark === mark) last.text += text; else segs.push({ mark, text });
@@ -173,7 +185,7 @@ function convertDocx(buf) {
         const kind = paragraphKind(x, text);
         lines.push(`[P${pNo}]` + (kind !== 'p' && kind !== 'li' ? `[${kind}]` : '') + ' ' + text);
         blocks.push({ id: `P${pNo}`, kind, text });
-        addMarks(`P${pNo}`, markedSegments(x, !/^(h\d|title)$/.test(kind)));   // гарчгийн үсгийн өнгө нь загварынх
+        addMarks(`P${pNo}`, markedSegments(x, /^(h\d|title)$/.test(kind)));
       } else if (l === 'tbl') {
         tNo++;
         lines.push('', `=== TABLE ${tNo} ===`);
@@ -181,7 +193,7 @@ function convertDocx(buf) {
         kids(x, 'tr').forEach((tr, i) => {
           const cells = kids(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
           lines.push(`T${tNo}R${i + 1} | ` + cells.join(' | '));
-          addMarks(`T${tNo}R${i + 1}`, desc(tr, 'p').flatMap(p => markedSegments(p, true)));
+          addMarks(`T${tNo}R${i + 1}`, desc(tr, 'p').flatMap(p => markedSegments(p, false)));
           rows.push(cells);
         });
         lines.push(`=== END TABLE ${tNo} ===`, '');
