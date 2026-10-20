@@ -177,6 +177,35 @@ function markedSegments(p, inHeading) {
   return segs.filter(s => s && s.text.trim());
 }
 
+// Хүснэгтийн гарчиг («Хүснэгт 3. …») ба доорх тайлбар («Эх сурвалж: …»)-ыг хүснэгттэй нь холбоно
+const TABLE_CAPTION = /^\s*(Хүснэгт|Table)\s*[\d.]/i;
+const TABLE_NOTE = /^\s*(Эх сурвалж|Тайлбар|Санамж|Жич|Тэмдэглэл|Source|Note)\s*[:：.]/i;
+const clip = (t, n = 160) => { t = t.replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n) + '…' : t; };
+// Header / footer, зүүлт тайлбар: тайлангийн нэр, огноо, хуудасны тэмдэглэл ихэвчлэн энд байдаг
+function docxSideText(zip) {
+  const out = [], seen = new Set();
+  const add = (tag, t) => { t = t.replace(/\s+/g, ' ').trim(); if (t && !seen.has(tag[0] + t)) { seen.add(tag[0] + t); out.push(`${tag} | ${t}`); } };
+  for (const [re, tag] of [[/^word\/header\d*\.xml$/, 'HEADER'], [/^word\/footer\d*\.xml$/, 'FOOTER']])
+    for (const n of zip.names.filter(n => re.test(n)).sort()) add(tag, desc(parseXml(zip.text(n) || ''), 'p').map(paragraphText).join(' '));
+  for (const [n, el, tag] of [['word/footnotes.xml', 'footnote', 'FN'], ['word/endnotes.xml', 'endnote', 'EN']]) {
+    const x = zip.text(n); if (!x) continue;
+    for (const fn of desc(parseXml(x), el)) if (!attr(fn, 'type')) add(`${tag}${attr(fn, 'id')}`, desc(fn, 'p').map(paragraphText).join(' '));
+  }
+  return out;
+}
+// Нэгтгэсэн нүд: хэвтээ (gridSpan) нүдний дараа «←», босоо (vMerge) үргэлжлэлд «↑» — баганын байрлал толгойтой таарна
+function rowCells(tr) {
+  const out = [];
+  for (const tc of kids(tr, 'tc')) {
+    const tcPr = kid(tc, 'tcPr'), vm = kid(tcPr, 'vMerge');
+    let text = desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim();
+    if (vm && attr(vm, 'val') !== 'restart' && !text) text = '↑';
+    out.push(text);
+    for (let k = 1; k < (parseInt(attr(kid(tcPr, 'gridSpan'), 'val'), 10) || 1); k++) out.push('←');
+  }
+  return out;
+}
+
 function convertDocx(buf) {
   const zip = readZip(buf);
   const xml = zip.text('word/document.xml');
@@ -186,7 +215,9 @@ function convertDocx(buf) {
   const headerFills = new Set(desc(body, 'tbl').flatMap(t => kids(kids(t, 'tr')[0], 'tc'))
     .map(tc => (attr(kid(kid(tc, 'tcPr'), 'shd'), 'fill') || '').toUpperCase()));
   const addMarks = (anchor, segs) => { for (const s of segs) marks.push(`MARK ${anchor} {${s.mark}} ${s.text.trim()}`); };
-  let pNo = 0, tNo = 0;
+  let pNo = 0, tNo = 0, prev = null;   // prev: шууд өмнөх элемент ({ p, text } эсвэл { tbl: END TABLE мөрийн индекс })
+  const side = docxSideText(zip);
+  if (side.length) lines.push('=== HEADER / FOOTER / FOOTNOTES ===', ...side, '=== END HEADER / FOOTER ===', '');
   (function walk(nodes) {
     for (const x of nodes) {
       if (!x.n) continue;
@@ -199,13 +230,16 @@ function convertDocx(buf) {
         lines.push(`[P${pNo}]` + (kind !== 'p' && kind !== 'li' ? `[${kind}]` : '') + ' ' + text);
         blocks.push({ id: `P${pNo}`, kind, text });
         addMarks(`P${pNo}`, markedSegments(x, /^(h\d|title)$/.test(kind)));
+        if (prev?.tbl !== undefined && TABLE_NOTE.test(text)) lines[prev.tbl] += ` (тайлбар [P${pNo}]: ${clip(text)})`;
+        prev = { p: pNo, text };
       } else if (l === 'tbl') {
         tNo++;
-        lines.push('', `=== TABLE ${tNo} ===`);
+        const cap = prev?.p && TABLE_CAPTION.test(prev.text) ? ` (гарчиг [P${prev.p}]: ${clip(prev.text)})` : '';
+        lines.push('', `=== TABLE ${tNo} ===${cap}`);
         const rows = [];
         kids(x, 'tr').forEach((tr, i) => {
           const cells = kids(tr, 'tc').map(tc => desc(tc, 'p').map(paragraphText).filter(t => t.trim()).join(' / ').trim());
-          lines.push(`T${tNo}R${i + 1} | ` + cells.join(' | '));
+          lines.push(`T${tNo}R${i + 1} | ` + rowCells(tr).join(' | '));
           const tcs = kids(tr, 'tc');
           addMarks(`T${tNo}R${i + 1}`, tcs.flatMap((tc, j) => {
             const fill = i ? cellFill(tc, headerFills) : '';
@@ -214,6 +248,7 @@ function convertDocx(buf) {
           rows.push(cells);
         });
         lines.push(`=== END TABLE ${tNo} ===`, '');
+        prev = { tbl: lines.length - 2 };
         blocks.push({ id: `T${tNo}`, kind: 'table', rows });
       } else if (l === 'sdt') {
         const c = kid(x, 'sdtContent'); if (c) walk(c.c);

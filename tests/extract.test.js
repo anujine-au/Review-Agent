@@ -46,6 +46,26 @@ test('нүдийг бүхэлд нь будсаныг тооцно; толгой
   assert.deepEqual(r.lines.filter(l => l.startsWith('MARK ')), ['MARK T1R2 {cell:#FFF2CC} 1,855.0', 'MARK T1R4 {cell:#92D050} Ногоон']);
 });
 
+test('header / footer / зүүлт, хүснэгтийн гарчиг ба тайлбар, нэгтгэсэн нүдийг уншина', () => {
+  const xml = b => Buffer.from(`<?xml version="1.0"?>${b}`);
+  const body = '<w:p><w:r><w:t>Хүснэгт 3. Багц /сая төгрөгөөр/</w:t></w:r></w:p>' +
+    '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Бүлэг</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>Дүн</w:t></w:r></w:p></w:tc></w:tr>' +
+    '<w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Авто</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2</w:t></w:r></w:p></w:tc></w:tr>' +
+    '<w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>4</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+    '<w:p><w:r><w:t>Эх сурвалж: ЗМС</w:t></w:r></w:p>';
+  const r = convertDocx(zip([
+    { name: 'word/document.xml', data: xml(`<w:document ${W}><w:body>${body}</w:body></w:document>`) },
+    { name: 'word/header1.xml', data: xml(`<w:hdr ${W}><w:p><w:r><w:t>ТУЗ-ийн 2026 оны тайлан</w:t></w:r></w:p></w:hdr>`) },
+    { name: 'word/footer1.xml', data: xml(`<w:ftr ${W}><w:p/></w:ftr>`) },
+    { name: 'word/footnotes.xml', data: xml(`<w:footnotes ${W}><w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:t>—</w:t></w:r></w:p></w:footnote><w:footnote w:id="1"><w:p><w:r><w:t>Тушаал А/12</w:t></w:r></w:p></w:footnote></w:footnotes>`) }]));
+  const L = r.lines;
+  assert.deepEqual(L.slice(0, 4), ['=== HEADER / FOOTER / FOOTNOTES ===', 'HEADER | ТУЗ-ийн 2026 оны тайлан', 'FN1 | Тушаал А/12', '=== END HEADER / FOOTER ===']);
+  assert.ok(L.includes('=== TABLE 1 === (гарчиг [P1]: Хүснэгт 3. Багц /сая төгрөгөөр/)'));
+  assert.deepEqual(L.filter(l => /^T1R/.test(l)), ['T1R1 | Бүлэг | Дүн | ←', 'T1R2 | Авто | 1 | 2', 'T1R3 | ↑ | 3 | 4']);
+  assert.ok(L.includes('=== END TABLE 1 === (тайлбар [P2]: Эх сурвалж: ЗМС)'));
+  assert.deepEqual(r.blocks[1].rows[2], ['', '3', '4']);   // doc.json (ишлэл тулгалт) хэвээр
+});
+
 test('өнгөгүй тайланд COLOR-MARKED хэсэг нэмэгдэхгүй', () => {
   const r = convertDocx(docx('<w:p><w:r><w:rPr><w:color w:val="000000"/><w:highlight w:val="none"/></w:rPr><w:t>Хар</w:t></w:r></w:p>'));
   assert.equal(r.marks, 0);
