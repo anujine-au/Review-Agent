@@ -50,6 +50,8 @@ const FUP = require('./followup');
 const MAN = require('./manual');
 const ED = require('./edits');
 const SUG = require('./suggest');
+const AF = require('./autofix');
+const { convertDocx } = require('./extract');
 // Шийдвэр / илгээлт / эхлүүлэлтийг hash-chain логт (SP-118-04/01 §6 Decision, Submission лог)
 const auditLog = (action, fields) => { try { AL.append('audit', { action, ...fields }); } catch (e) { console.error('audit log:', e.message); } };
 WF.setAudit(auditLog);   // төлөвийн шилжилт бүр logs/audit.jsonl-д
@@ -327,6 +329,31 @@ function filterForAuditor(dir, text) {
   return JSON.stringify(f);
 }
 const jobMeta = id => C.readJson(path.join(jobDir(id), 'job.json')) || {};
+// Тайлангийн .docx-д үлдсэн «[АУДИТОР БАТАЛГААЖУУЛАХ: …]» тэмдэглэгээ — догол мөрийн дугаараар (P12, T3R2)
+function draftMarksIn(reportDir) {
+  const out = [];
+  if (!fs.existsSync(reportDir)) return out;
+  for (const f of fs.readdirSync(reportDir).filter(x => /\.docx$/i.test(x))) {
+    try {
+      for (const b of convertDocx(fs.readFileSync(path.join(reportDir, f))).blocks) {
+        const t = b.kind === 'table' ? (b.rows || []).map((r, i) => [i, r.join(' ')]) : [[null, b.text]];
+        for (const [i, s] of t) if (String(s).includes(ED.DRAFT_TAG)) out.push(i == null ? b.id : `${b.id}R${i + 1}`);
+      }
+    } catch { /* уншигдахгүй файл — бусад шалгалт барина */ }
+  }
+  return out;
+}
+// AI-ийн автомат засвар (server/autofix.js) — дуусахад багт мэдэгдэнэ (notify = null бол мэдэгдэхгүй)
+function startAutofix(rootId, n, who, audit, notify, force = false) {
+  const r = AF.start(rootId, n, who, { force, onDone: s => {
+    auditLog('report.autofix', { job: rootId, version: n, state: s.state, fixed: s.fixed, drafts: s.drafts, manual: s.manual, total: s.total, user: who });
+    console.log(`[${C.timeHms()}] AUTOFIX ${rootId} v${n} ${s.state} fixed=${s.fixed}/${s.total}${s.error ? ' — ' + s.error : ''}`);
+    if (notify && s.state === 'done' && s.fixed) NT.send(notify, { kind: 'AUTOFIX', job: rootId, version: n, audit,
+      text: `${audit.code || ''} ${audit.branch || ''}: AI ${s.fixed} саналыг тайланд засаж оруулсан${s.drafts ? ` (${s.drafts} ноорог)` : ''}, ${s.manual} нь гараар засах — Track Changes-тэй Word файлыг шалгана уу`.trim() });
+  } });
+  if (!r.error) auditLog('report.autofix.start', { job: rootId, version: n, total: r.total, user: who });
+  return r;
+}
 function listJobIds() { return fs.readdirSync(P.jobs).filter(isJobId).sort(); }
 
 function removeJob(dir) { clearWorkFiles(dir); C.rmrf(dir); }
@@ -851,6 +878,9 @@ async function handle(req, res) {
       let files = jobFiles(dir);
       if (!files.some(f => f.category === 'report')) return sendErr(res, 400, isResubmit ? 'Засварласан тайлангийн файл эсвэл линкийг заавал оруулна уу' : 'Үндсэн тайлан (report) оруулаагүй байна');
       if (isResubmit) {
+        // AI-ийн ноорог тэмдэглэгээ «[АУДИТОР БАТАЛГААЖУУЛАХ: …]» үлдсэн тайланг илгээхгүй — аудитор нотолгоотой бөглөх ёстой
+        const left = draftMarksIn(path.join(dir, 'input', 'report'));
+        if (left.length) return sendErr(res, 409, `Тайланд AI-ийн ноорог тэмдэглэгээ «[${ED.DRAFT_TAG}: …]» ${left.length} газар үлдсэн байна (${left.slice(0, 6).join(', ')}${left.length > 6 ? ' …' : ''}). Нотолгоотой тулгаж бөглөөд, тэмдэглэгээг арилгаад дахин илгээнэ үү.`);
         // Excel / хөтөлбөр өөрчлөгдөөгүй бол өмнөх хувилбарынхыг дахин ашиглана (эх файлаас хуулна)
         const prevV = WF.versions(rootId).filter(x => x !== id).pop();
         for (const cat of ['excel', 'program']) {
@@ -1021,7 +1051,9 @@ async function handle(req, res) {
       NT.send([...WF.teamOf(rootId), latestBy], { kind: 'RETURNED', job: rootId, version: draft.version, audit: au,
         text: `${au.code || ''} ${au.branch || ''}: захирал v${draft.version}-д ${draft.items.length} санал буцаалаа — засаад дахин илгээнэ үү`.trim() });
       log('RELEASE', `${rootId} v${draft.version} sent=${draft.items.length}`);
-      return sendJson(res, 200, { ok: true, ...summary, file: fr.file });
+      // AI-ийн автомат засвар: баталсан санал бүрийг тайланд Track Changes-ээр (ар талд, хүлээхгүй)
+      startAutofix(rootId, draft.version, who, au, [...WF.teamOf(rootId), latestBy]);
+      return sendJson(res, 200, { ok: true, ...summary, file: fr.file, autofix: true });
     }
     // Царцсан feedback (багийн гишүүн ба захирал) — зөвхөн release хийсэн хувилбар
     const fm = rest.match(/^\/feedback\/(\d{1,3})$/);
@@ -1053,15 +1085,19 @@ async function handle(req, res) {
     }
     // Тайлан дээр шууд засах (server/edits.js): санал бүрийн ишлэлийг .docx-д солих, буцаах. Эх файл өөрчлөгдөхгүй.
     // Харах — job-ийг харах эрхтэй хүн бүр; засах / буцаах — зөвхөн багийн гишүүн, RETURNED төлөвт, сүүлийн feedback дээр.
-    const edm = rest.match(/^\/feedback\/(\d{1,3})\/edits(?:\/(preview|suggest|docx|all|\d{1,5}))?(?:\/(revert))?$/);
+    const edm = rest.match(/^\/feedback\/(\d{1,3})\/edits(?:\/(preview|suggest|docx|tracked|autofix|all|\d{1,5}))?(?:\/(revert))?$/);
     if (edm) {
       const n = Number(edm[1]), sub = edm[2] || '', rel = WF.releasedVersions(rootId);
       if (!rel.includes(n)) return sendErr(res, 404, 'Энэ хувилбарт feedback илгээгдээгүй байна');
-      if (m === 'GET' && !sub) { const st = ED.state(rootId, n); return st.error ? sendErr(res, st.code, st.error) : sendJson(res, 200, st); }
-      if (m === 'GET' && sub === 'docx') {
-        const w = ED.working(rootId, n);
-        if (!w) return sendErr(res, 404, 'Вэб дээр хийсэн засвар алга');
-        auditLog('report.edit.download', { job: rootId, version: n, applied: w.applied, user: who, role: session.role });
+      if (m === 'GET' && !sub) {
+        const st = ED.state(rootId, n);
+        if (st.autofix?.state === 'running' && !AF.isRunning(rootId, n)) st.autofix.state = 'interrupted';   // сервер дахин ассан
+        return st.error ? sendErr(res, st.code, st.error) : sendJson(res, 200, st);
+      }
+      if (m === 'GET' && (sub === 'docx' || sub === 'tracked')) {
+        const w = ED.working(rootId, n, sub === 'tracked');
+        if (!w) return sendErr(res, 404, sub === 'tracked' ? 'AI засвартай (Track Changes) хувилбар алга' : 'Вэб дээр хийсэн засвар алга');
+        auditLog('report.edit.download', { job: rootId, version: n, applied: w.applied, tracked: sub === 'tracked', user: who, role: session.role });
         const ascii = w.name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
         return send(res, 200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fs.readFileSync(w.path),
           { 'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(w.name)}` });
@@ -1071,6 +1107,11 @@ async function handle(req, res) {
       if (WF.stateOf(rootId).state !== 'RETURNED' || n !== rel[rel.length - 1]) return sendErr(res, 409, 'Засвар илгээсний дараа тайланг энд засах боломжгүй');
       const body = await readJsonBody(req);
       const pf = path.join(jobDir(rootId), 'feedback', `progress_v${n}.json`);
+      // AI-ийн автомат засварыг дахин ажиллуулах (тасарсан / амжилтгүй болсон үед) — хэрэглэсэн засвар хэвээр
+      if (sub === 'autofix') {
+        const r = startAutofix(rootId, n, who, jobMeta(rootId).audit || {}, null, body.force === true);
+        return r.error ? sendErr(res, 409, r.error) : sendJson(res, 200, r);
+      }
       if (sub === 'preview') {
         const r = ED.preview(rootId, n, String(body.rv_id || ''), body.text, body.old);
         return r.error ? sendErr(res, r.code || 409, r.error) : sendJson(res, 200, r);

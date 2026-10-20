@@ -31,7 +31,8 @@
 - Хянуулах хүсэлт (SUBMITTED / RESUBMITTED) илгээхэд AI шууд ажиллахгүй (AI төлөв `pending`); захирал тайлан бүр дээр «AI хянуулах» (`POST /api/jobs/<id>/ai-review`, эрх `job.runAI`) дарж эхлүүлнэ. AI нэг удаад нэг тайлан шалгах хооронд захирал бусад дууссан тайлангийн саналыг шийдвэрлэж болно.
 - Засварын дахин хяналт (M14) нь сүүлийн release хийсэн feedback-ийн эсрэг шалгана (`runner.previousIssues`).
 - Тайлан дээр шууд засах (`server/edits.js`): RETURNED үед багийн гишүүн санал бүрийн `quote`-ыг `suggested_text` (эсвэл өөрийн текст)-ээр урьдчилан харж зөвшөөрнө → `jobs/<root>/edits/v<n>/working.docx` (эх файл өөрчлөгдөхгүй, засвар бүрийг буцааж болно). «Засвар оруулах» маягтаас энэ файлыг засварласан тайлан болгон илгээнэ. «✨ AI-аар найруулга» (`server/suggest.js`): нэг саналд далдалсан бичвэрээр, хэрэгсэлгүй Claude дуудаж солих хэсэг + шинэ текст эсвэл «текстээр засагдахгүй» гэсэн хариу авна; шинэ тоо бүрийн эх сурвалжийг тулгана; `logs/ai_runs.jsonl`-д AI_SUGGEST.
-- Тест: `node --test tests/workflow.test.js tests/edits.test.js`.
+- AI-ийн автомат засвар (`server/autofix.js`): release хийхэд feedback-ийн санал бүрийг `suggest.js`-ийн ноорог горимоор (мэдээлэл дутууг `[АУДИТОР БАТАЛГААЖУУЛАХ: …]`) засаж, `edits.js`-ийн log-д `auto` засвар болгоно → `working.docx` ба `working_tracked.docx` (Track Changes + Word comment, засаж чадаагүй санал «Гараар засах»). Төлөв `edits/v<n>/autofix.json`. Ноорог тэмдэглэгээ үлдсэн тайланг resubmit хийхгүй (409). Эцсийн засвар аудиторынх.
+- Тест: `node --test tests/workflow.test.js tests/edits.test.js tests/autofix.test.js`.
 
 ## Хатуу хязгаарлалт
 

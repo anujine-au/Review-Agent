@@ -704,6 +704,13 @@ mark.OK { background: var(--ok-bg); box-shadow: inset 0 -2px 0 var(--ok); }
 .fx ins { background: var(--sug-mark); color: var(--ok); text-decoration: none; font-weight: 600; }
 .fx.done { border-color: var(--ok); background: var(--ok-bg); }
 .fx.done > b { color: var(--ok); }
+.fx.done.auto { border-color: var(--accent); background: var(--accent-2); } .fx.done.auto > b { color: var(--accent); }
+.afbox { margin: 0 0 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; display: grid; gap: 6px; }
+.afbox.run { border-color: var(--accent); background: var(--accent-2); }
+.afbox.ok { border-color: var(--ok); background: var(--ok-bg); } .afbox.ok > b { color: var(--ok); }
+.afbox.bad { border-color: var(--crit); background: var(--crit-bg); } .afbox.bad > b { color: var(--crit); }
+.afbox .warn { color: var(--major); font-weight: 600; }
+.afprog { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; } .afprog i { display: block; height: 100%; background: var(--accent); }
 .fx .warn { color: var(--major); font-weight: 600; }
 .fx .err { color: var(--crit); }
 .fxbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--sug-bg); font-size: 13px; }
@@ -2906,8 +2913,11 @@ function fxHtml(x) {
   if (!ed || !ed.available) return '';
   const it = (ed.items || []).find(i => i.id === x.id); if (!it) return '';
   const can = x._fbCan, done = (ed.edits || []).filter(e => e.rv_id === x.id && e.status === 'applied');
-  if (done.length) return done.map(e => `<div class="fx done"><b>✓ Тайланд засварласан${e.block ? ' · ' + esc(e.block) : ''}</b>
+  if (done.length) return done.map(e => `<div class="fx done${e.auto ? ' auto' : ''}"><b>${e.auto ? '🤖 AI тайланд засварласан' : '✓ Тайланд засварласан'}${e.block ? ' · ' + esc(e.block) : ''}</b>
       ${e.result && e.result !== 'ok' ? '<div class="warn">⚠ Энэ засвар одоогийн тайланд хэрэгжихгүй болсон (өөр засвартай давхцсан) — буцаагаад дахин хийнэ үү.</div>' : ''}
+      ${e.auto && e.note ? `<div class="sub">AI: ${esc(e.note)}</div>` : ''}
+      ${e.auto && e.draft ? `<div class="err">⚠ Ноорог — «[АУДИТОР БАТАЛГААЖУУЛАХ: …]» хэсгийг нотолгоотой тулгаж бөглөнө. Бөглөөгүй бол засварласан тайланг илгээх боломжгүй.</div>` : ''}
+      ${e.auto && (e.numbers || []).length ? `<div class="${e.numbers.some(m => m.src === 'none') ? 'err' : 'warn'}">⚠ Шинэ тоо — тайлантай тулгана уу: ${e.numbers.map(m => `<b>${esc(m.n)}</b> (${m.src === 'report' ? 'тайланд бий' : m.src === 'comment' ? 'захирлын саналд дурдсан' : 'эх сурвалж олдсонгүй'})`).join(', ')}</div>` : ''}
       <div class="para">${fxDiff(e.before || e.old, e.after || e.new)}</div>
       <div class="row"><span class="sub">${esc(String(e.by || '').replace(/^name:/, ''))} · ${esc(fmtDate(e.at))}</span><span class="spacer"></span>${can ? `<button class="btn sm" data-fxrev="${e.seq}" title="Тайланг энэ засвараас өмнөх байдалд нь буцаана">↶ Буцаах</button>` : ''}</div></div>`).join('');
   if (!can) return '';
@@ -2934,9 +2944,17 @@ function fxHtml(x) {
 function fxBarHtml(fb) {
   const ed = fb.ed; if (!ed) return '';
   if (!ed.available) return ed.items?.length ? `<div class="fxbar"><span class="sub">✎ Тайланд шууд засах боломжгүй: ${esc(ed.reason)}</span></div>` : '';
-  const can = fbCanMark(fb);
-  if (!ed.applied && !can) return '';
-  return `<div class="fxbar"><span>✎ <b>Тайлан дээр шууд засах</b> — ${ed.applied ? `<b>${ed.applied}</b> засвар хийсэн` : 'санал бүрийн «Тайланд шууд засах» хэсгээс зөвшөөрнө'}${ed.conflicts ? ` · <span class="warn">⚠ ${ed.conflicts} давхцалтай</span>` : ''}. Таны эх файл өөрчлөгдөхгүй — засварласан хуулбар үүснэ.</span><span class="spacer"></span>
+  const can = fbCanMark(fb), af = ed.autofix;
+  if (!ed.applied && !can && !af) return '';
+  // AI-ийн автомат засвар (захирал буцаахад эхэлдэг): явц, үр дүн, Track Changes-тэй Word
+  const afHtml = !af ? '' : af.state === 'running'
+    ? `<div class="afbox run"><div><b>🤖 AI захирлын баталсан саналаар тайланг засаж байна…</b> <span class="sub">${af.done} / ${af.total} санал · энэ хуудсыг хааж болно, дуусахад мэдэгдэнэ</span></div><div class="afprog"><i style="width:${af.total ? Math.round(100 * af.done / af.total) : 0}%"></i></div></div>`
+    : af.state === 'interrupted' || af.state === 'failed'
+      ? `<div class="afbox bad"><div><b>⚠ AI засвар ${af.state === 'failed' ? 'амжилтгүй боллоо' : 'тасарсан'}</b>${af.error ? ` <span class="sub">— ${esc(af.error)}</span>` : ''} ${can ? '<button class="btn sm" data-fxauto="1">↻ Үргэлжлүүлэх</button>' : ''}</div></div>`
+      : `<div class="afbox ok"><div><b>🤖 AI ${af.fixed} саналыг тайланд засаж оруулсан</b>${af.drafts ? ` · <span class="warn">${af.drafts} нь ноорог — «[АУДИТОР БАТАЛГААЖУУЛАХ: …]» хэсгийг нотолгоотой тулгаж бөглөнө</span>` : ''}${af.manual ? ` · ${af.manual} саналыг AI засаж чадаагүй — гараар засна (Word-д comment болгосон)` : ''}.</div>
+        <div class="sub">Засвар бүрийг санал дээр нь харж, хэрэггүйг нь «↶ Буцаах» дарна. Эсвэл Word файлыг татаж Review → Accept / Reject хийнэ. Эцсийн тайлан таных — засвар бүрийг шалгаад илгээнэ.</div></div>`;
+  return `${afHtml}<div class="fxbar"><span>✎ <b>Тайлан дээр шууд засах</b> — ${ed.applied ? `<b>${ed.applied}</b> засвар хийсэн` : 'санал бүрийн «Тайланд шууд засах» хэсгээс зөвшөөрнө'}${ed.conflicts ? ` · <span class="warn">⚠ ${ed.conflicts} давхцалтай</span>` : ''}. Таны эх файл өөрчлөгдөхгүй — засварласан хуулбар үүснэ.</span><span class="spacer"></span>
+    ${ed.tracked ? `<button class="btn sm primary" data-fxdl="${fb.version}" data-fxtr="1" title="AI-ийн засвар Track Changes-ээр, тайлбар нь comment-оор — Word-оор хянана">⬇ Word (Track Changes)</button>` : ''}
     ${ed.applied ? `<button class="btn sm" data-fxdl="${fb.version}">⬇ Засварласан тайлан (.docx)</button>${can ? '<button class="btn sm ghost" data-fxrev="all">↶ Бүгдийг буцаах</button>' : ''}` : ''}</div>`;
 }
 function feedbackHtml() {
@@ -3088,7 +3106,7 @@ function bindWf() {
       }
       let text = `Аудиторт v${p.version}-ийн feedback илгээх үү?\n\n• ${p.sent} санал аудиторт илгээгдэнэ\n• ${p.excluded} татгалзсан — аудиторт харагдахгүй`;
       if (p.undecided) text += `\n• ${p.undecided} санал шийдвэрлэгдээгүй — ИЛГЭЭГДЭХГҮЙ (хасагдана)`;
-      text += '\n\nИлгээсний дараа энэ feedback өөрчлөгдөхгүй.';
+      text += '\n\nИлгээсний дараа энэ feedback өөрчлөгдөхгүй.\nAI илгээсэн саналаар тайланг засаж (Track Changes), аудиторт засвартай төсөл бэлтгэнэ — аудитор засвар бүрийг шалгаж баталгаажуулна.';
       if (!confirm(text)) return;
       b.disabled = true;
       try { await api(`/api/jobs/${id}/release`, { method: 'POST', body: JSON.stringify({ exclude_undecided: !!p.undecided }) }); current.job = null; current.wf = null; await refreshJob(id); }
@@ -3156,9 +3174,22 @@ function bindWf() {
   });
   $$('[data-fxdl]').forEach(b => b.onclick = async () => {
     const fb = fxFb(); if (!fb) return; b.disabled = true;
-    try { await downloadBlob(fxUrl(fb, '/docx'), fb.ed?.base_name || 'report.docx'); } catch (e) { if (e.message !== 'unauthorized') alert('Татаж чадсангүй: ' + e.message); }
+    const tracked = b.dataset.fxtr === '1', name = fb.ed?.base_name || 'report.docx';
+    try { await downloadBlob(fxUrl(fb, tracked ? '/tracked' : '/docx'), tracked ? name.replace(/(\.docx)?$/i, '_AI-засвар.docx') : name); } catch (e) { if (e.message !== 'unauthorized') alert('Татаж чадсангүй: ' + e.message); }
     finally { b.disabled = false; }
   });
+  // AI-ийн автомат засварыг дахин эхлүүлэх (тасарсан / амжилтгүй)
+  $$('[data-fxauto]').forEach(b => b.onclick = async () => {
+    const fb = fxFb(); if (!fb) return; b.disabled = true;
+    try { await api(fxUrl(fb, '/autofix'), { method: 'POST', body: JSON.stringify({ force: b.dataset.fxauto === 'force' }) }); fb.ed = await api(fxUrl(fb)); renderJob(); }
+    catch (e) { b.disabled = false; if (e.message !== 'unauthorized') alert('Эхлүүлж чадсангүй: ' + e.message); }
+  });
+  // AI засвар хийгдэж байх үед төлөвийг шинэчилнэ
+  const afb = fxFb();
+  if (afb?.ed?.autofix?.state === 'running' && !current.afPoll) current.afPoll = setTimeout(async () => {
+    current.afPoll = null; const fb = fxFb(); if (!fb) return;
+    try { fb.ed = await api(fxUrl(fb)); renderJob(); } catch (e) { /* дараагийн удаа */ }
+  }, 6000);
   $$('[data-final]').forEach(b => b.onclick = async () => {
     b.disabled = true;
     try { await downloadBlob(`/api/jobs/${current.id}/final/${b.dataset.final}`, `final.${b.dataset.final}`); } catch (e) { if (e.message !== 'unauthorized') alert('Татаж чадсангүй: ' + e.message); }

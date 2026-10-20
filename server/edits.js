@@ -45,9 +45,10 @@ function scan(xml) {
     const [, close, name, attrs, self] = m;
     if (name === 'p') {
       if (self) continue;
-      if (!close) { stack.push({ segs: [], chars: [], text: '', tbl, tNo, row, nested: stack.length > 0 }); continue; }
+      if (!close) { stack.push({ segs: [], chars: [], text: '', tbl, tNo, row, nested: stack.length > 0, start: m.index, openEnd: TAG_RE.lastIndex }); continue; }
       const p = stack.pop();
       if (!p) continue;
+      p.end = m.index;   // </w:p>-ийн байрлал (comment-ийн тэмдэглэгээнд)
       if (!p.text.trim()) continue;
       if (!p.nested && !p.tbl) p.id = `P${++pNo}`;
       else if (p.tbl) p.id = `T${p.tNo}R${p.row}`;
@@ -127,30 +128,101 @@ function replaceRange(xml, p, a, b, newText) {
   return xml;
 }
 
-/** Нэг засвар хэрэглэх: { xml, before, after, id } эсвэл { error } */
-function applyOne(xml, e) {
+/* ---------- Track Changes (AI-ийн автомат засвар): хуучныг <w:del>, шинийг <w:ins> болгоно ---------- */
+const AI_AUTHOR = 'AI засвар (захирал баталсан санал)';
+const wDate = () => new Date().toISOString().slice(0, 19) + 'Z';
+const attrEnc = s => encode(s).replace(/"/g, '&quot;');
+// w:t-г агуулсан run-ийн хил: <w:r …>, rPr, w:t-ийн өмнөх / дараах хүүхдүүд
+function runOf(xml, s) {
+  const start = Math.max(xml.lastIndexOf('<w:r>', s.open), xml.lastIndexOf('<w:r ', s.open));
+  const close = xml.indexOf('</w:r>', s.cEnd);
+  if (start < 0 || close < 0) return null;
+  const tagEnd = xml.indexOf('>', start) + 1;
+  let body = tagEnd, rPr = '';
+  if (xml.startsWith('<w:rPr', tagEnd)) { const e = xml.indexOf('</w:rPr>', tagEnd); if (e < 0 || e > s.open) return null; body = e + 8; rPr = xml.slice(tagEnd, body); }
+  if (xml.slice(body, s.open).includes('<w:t') || xml.slice(s.cEnd + 6, close).includes('<w:t')) return null;   // нэг run-д олон w:t — энгийн солилт
+  return { start, end: close + 6, tag: xml.slice(start, tagEnd), rPr, before: xml.slice(body, s.open), after: xml.slice(s.cEnd + 6, close) };
+}
+function trackRange(xml, p, a, b, newText, ids) {
+  const touched = new Map();
+  for (let i = a; i < b; i++) { const c = p.chars[i]; if (!c || c.seg < 0) continue; const r = touched.get(c.seg); if (r) r[1] = c.off + 1; else touched.set(c.seg, [c.off, c.off + 1]); }
+  if (!touched.size) return null;
+  const segs = [...touched.keys()].sort((x, y) => x - y), runs = segs.map(si => runOf(xml, p.segs[si]));
+  if (runs.some(r => !r) || new Set(runs.map(r => r.start)).size !== runs.length) return null;
+  const T = t => `<w:t xml:space="preserve">${encode(t)}</w:t>`, D = wDate(), A = attrEnc(AI_AUTHOR);
+  const ops = segs.map((si, idx) => {
+    const s = p.segs[si], [f, t] = touched.get(si), r = runs[idx];
+    const pre = s.text.slice(0, f), del = s.text.slice(f, t), post = s.text.slice(t);
+    let out = '';
+    if (pre || r.before) out += r.tag + r.rPr + r.before + (pre ? T(pre) : '') + '</w:r>';
+    if (del) out += `<w:del w:id="${ids.next()}" w:author="${A}" w:date="${D}"><w:r>${r.rPr}<w:delText xml:space="preserve">${encode(del)}</w:delText></w:r></w:del>`;
+    if (idx === 0 && newText) out += `<w:ins w:id="${ids.next()}" w:author="${A}" w:date="${D}"><w:r>${r.rPr}${T(newText)}</w:r></w:ins>`;
+    if (post || r.after) out += r.tag + r.rPr + (post ? T(post) : '') + r.after + '</w:r>';
+    return [r.start, r.end, out];
+  });
+  for (const [st, en, rep] of ops.sort((x, y) => y[0] - x[0])) xml = xml.slice(0, st) + rep + xml.slice(en);
+  return xml;
+}
+const idGen = start => { let k = start; return { next: () => k++ }; };
+
+/** Нэг засвар хэрэглэх: { xml, before, after, id } эсвэл { error }. ids өгвөл (AI-ийн засвар) Track Changes-ээр */
+function applyOne(xml, e, ids) {
   const paras = scan(xml);
   const hit = locate(paras, e.old, e.anchor);
   if (hit.error) return hit;
-  const next = replaceRange(xml, hit.p, hit.a, hit.b, e.new);
+  const next = (ids && trackRange(xml, hit.p, hit.a, hit.b, e.new, ids)) || replaceRange(xml, hit.p, hit.a, hit.b, e.new);
   if (next == null) return { error: 'not_found' };
   const before = hit.p.text;
   return { xml: next, id: hit.p.id, before, after: before.slice(0, hit.a) + e.new + before.slice(hit.b) };
 }
 
-/** Эх .docx + засварууд → { buf, results: { seq: 'ok' | error } } */
-function build(baseBuf, edits) {
+/* ---------- Word comment: догол мөр (эсвэл хүснэгтийн мөрийн эхний нүд)-ийг бүхэлд нь тэмдэглэнэ ---------- */
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+function addComments(entries, xml, comments, ids) {
+  if (!comments.length) return xml;
+  const paras = scan(xml), first = paras.find(p => p.id);
+  const ops = [], parts = [], D = wDate();
+  for (const c of comments) {
+    const p = paras.find(x => x.id === c.block) || paras.find(x => c.block && (x.id || '').startsWith(c.block + 'R')) || first;
+    if (!p) continue;
+    const k = ids.next();
+    let at = p.openEnd;
+    if (xml.startsWith('<w:pPr', at)) { const e = xml.indexOf('</w:pPr>', at); if (e > 0 && e < p.end) at = e + 8; }
+    ops.push([at, `<w:commentRangeStart w:id="${k}"/>`], [p.end, `<w:commentRangeEnd w:id="${k}"/><w:r><w:commentReference w:id="${k}"/></w:r>`]);
+    parts.push(`<w:comment w:id="${k}" w:author="${attrEnc(c.author || AI_AUTHOR)}" w:date="${D}" w:initials="AI">${String(c.text).split(/\n+/).map(l => `<w:p><w:r><w:t xml:space="preserve">${encode(l)}</w:t></w:r></w:p>`).join('')}</w:comment>`);
+  }
+  for (const [pos, ins] of ops.sort((x, y) => y[0] - x[0])) xml = xml.slice(0, pos) + ins + xml.slice(pos);
+  const get = n => entries.find(e => e.name === n);
+  const cm = get('word/comments.xml');
+  if (cm) cm.data = Buffer.from(cm.data.toString('utf8').replace(/<\/w:comments>\s*$/, parts.join('') + '</w:comments>'), 'utf8');
+  else {
+    entries.push({ name: 'word/comments.xml', data: Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:comments xmlns:w="${W_NS}">${parts.join('')}</w:comments>`, 'utf8') });
+    const rels = get('word/_rels/document.xml.rels');
+    if (rels) rels.data = Buffer.from(rels.data.toString('utf8').replace('</Relationships>', '<Relationship Id="rIdAiComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>'), 'utf8');
+    const ct = get('[Content_Types].xml');
+    if (ct && !ct.data.toString('utf8').includes('/word/comments.xml')) ct.data = Buffer.from(ct.data.toString('utf8').replace('</Types>', '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>'), 'utf8');
+  }
+  return xml;
+}
+
+/**
+ * Эх .docx + засварууд → { buf, results: { seq: 'ok' | error } }
+ * opts.track: AI-ийн (auto) засварыг Track Changes-ээр; opts.comments: [{ block, text }] — Word comment
+ */
+function build(baseBuf, edits, opts = {}) {
   const z = readZip(baseBuf);
   let xml = z.get('word/document.xml');
   if (!xml) throw new Error('word/document.xml олдсонгүй');
   xml = xml.toString('utf8');
-  const results = {};
+  const results = {}, ids = idGen(880000);
   for (const e of edits) {
     if (e.status !== 'applied') continue;
-    const r = applyOne(xml, e);
+    const r = applyOne(xml, e, opts.track && e.auto ? ids : null);
     if (r.error) results[e.seq] = r.error; else { xml = r.xml; results[e.seq] = 'ok'; }
   }
-  const entries = z.names.filter(n => !n.endsWith('/')).map(n => ({ name: n, data: n === 'word/document.xml' ? Buffer.from(xml, 'utf8') : z.get(n) }));
+  const entries = z.names.filter(n => !n.endsWith('/')).map(n => ({ name: n, data: z.get(n) }));
+  xml = addComments(entries, xml, opts.comments || [], ids);
+  entries.find(e => e.name === 'word/document.xml').data = Buffer.from(xml, 'utf8');
   return { buf: zip(entries), xml, results };
 }
 
@@ -179,11 +251,45 @@ function baseOf(fb) {
 }
 const readLog = (rootId, n) => C.readJson(logFile(rootId, n)) || { version: n, edits: [] };
 
+/* ---------- AI-ийн автомат засвар (server/autofix.js): төлөв, Word comment ---------- */
+const afFile = (rootId, n) => path.join(edDir(rootId, n), 'autofix.json');
+const autofixOf = (rootId, n) => C.readJson(afFile(rootId, n));
+const DRAFT_TAG = 'АУДИТОР БАТАЛГААЖУУЛАХ';
+// Track Changes-тэй хувилбарын comment: AI-ийн засвар бүрийн шалтгаан, ноорог, AI засаж чадаагүй санал (аудитор юу хийх)
+function commentsOf(rootId, n, log) {
+  const af = autofixOf(rootId, n), fb = af && feedback(rootId, n);
+  if (!fb) return [];
+  const real = s => C.restoreTokens(jdir(rootId), String(s || ''));
+  const out = [];
+  for (const it of fb.items || []) {
+    const st = af.items?.[it.id]; if (!st) continue;
+    const head = `${it.id} · ${it.title || ''}`.trim();
+    const ed = log.edits.find(e => e.auto && e.rv_id === it.id && e.status === 'applied' && (!e.result || e.result === 'ok'));
+    if (ed) {
+      const lines = [`AI засвар — ${head}`];
+      if (ed.note) lines.push(real(ed.note));
+      if (ed.draft) lines.push(`⚠ Ноорог: «[${DRAFT_TAG}: …]» гэсэн хэсгийг нотолгоотой тулгаж бөглөөд тэмдэглэгээг арилгана уу.`);
+      const none = (ed.numbers || []).filter(x => x.src === 'none').map(x => x.n);
+      if (none.length) lines.push(`⚠ Шинэ тоо (${none.join(', ')}) тайлан, саналд алга — эх сурвалжтай тулгана уу.`);
+      out.push({ block: ed.block, text: lines.join('\n') });
+    } else if (st.status !== 'pending') {
+      const k = String(it.anchor || '').toUpperCase().replace(/[[\]\s]/g, '').match(/^(P\d+|T\d+)(R\d+)?/);
+      out.push({ block: k ? k[1] + (k[2] || '') : null, text: [`Гараар засах — ${head}`, it.required_action ? `Хийх: ${it.required_action}` : '', st.reason ? `AI: ${real(st.reason)}` : ''].filter(Boolean).join('\n') });
+    }
+  }
+  return out;
+}
+
 function save(rootId, n, log, base) {
-  const { buf, results } = build(fs.readFileSync(base.file), log.edits);
+  const src = fs.readFileSync(base.file);
+  const { buf, results } = build(src, log.edits);
   for (const e of log.edits) e.result = e.status === 'applied' ? results[e.seq] : undefined;
   fs.mkdirSync(edDir(rootId, n), { recursive: true });
   fs.writeFileSync(path.join(edDir(rootId, n), 'working.docx'), buf);
+  // Word-оор хянах хувилбар: AI-ийн засвар Track Changes-ээр, тайлбар comment-оор
+  const comments = commentsOf(rootId, n, log), tracked = path.join(edDir(rootId, n), 'working_tracked.docx');
+  if (comments.length || log.edits.some(e => e.auto && e.status === 'applied')) fs.writeFileSync(tracked, build(src, log.edits, { track: true, comments }).buf);
+  else fs.rmSync(tracked, { force: true });
   C.writeJson(logFile(rootId, n), { ...log, base: { job: base.job, name: base.name, sha256: base.sha256 }, updated_at: C.nowIso() });
   return results;
 }
@@ -197,8 +303,13 @@ function state(rootId, n) {
   // Ишлэлгүй ч байршилтай санал — AI-аар засах хэсгийг сонгуулж болно
   const items = (fb.items || []).filter(x => x.quote || x.anchor).map(x => ({ id: x.id, old: x.quote || '', suggested: x.quote ? suggestionOf(rootId, fb, x) : '' }));
   const applied = log.edits.filter(e => e.status === 'applied');
+  const af = autofixOf(rootId, n);
+  const afSum = af ? { state: af.state, total: af.total || 0, done: af.done || 0, error: af.error || '', started: af.started, finished: af.finished || null,
+    fixed: Object.values(af.items || {}).filter(x => x.status === 'applied').length, manual: Object.values(af.items || {}).filter(x => !['applied', 'pending'].includes(x.status)).length,
+    drafts: applied.filter(e => e.auto && e.draft).length } : null;
   return { version: n, available: !base.reason, reason: base.reason || '', base_name: base.name || '', items, ai: SUG.list(rootId, n), edits: log.edits,
-    applied: applied.length, conflicts: applied.filter(e => e.result && e.result !== 'ok').length, updated_at: log.updated_at || null };
+    applied: applied.length, conflicts: applied.filter(e => e.result && e.result !== 'ok').length, updated_at: log.updated_at || null,
+    autofix: afSum, tracked: fs.existsSync(path.join(edDir(rootId, n), 'working_tracked.docx')) };
 }
 
 function prepare(rootId, n, rvId, newText, oldText) {
@@ -248,6 +359,37 @@ function apply(rootId, n, rvId, newText, by, oldText) {
   return { ok: true, edit: p.log.edits[p.log.edits.length - 1] };
 }
 
+/**
+ * AI-ийн автомат засвар (server/autofix.js): SUG-ийн санал (жинхэнэ утгаар) — { ok, edit } эсвэл { error }.
+ * Аудиторын засвартай ижил log-д «auto» тэмдэгтэй орно — вэб дээр харагдаж, нэг бүрчлэн буцаагдана.
+ */
+function applyAuto(rootId, n, rvId, sug) {
+  const fb = feedback(rootId, n);
+  if (!fb) return { error: 'feedback алга' };
+  const item = (fb.items || []).find(x => x.id === rvId);
+  const base = baseOf(fb);
+  if (!item || base.reason) return { error: base.reason || 'Санал олдсонгүй' };
+  const log = readLog(rootId, n);
+  if (log.edits.some(e => e.rv_id === rvId && e.status === 'applied')) return { error: 'Аудитор аль хэдийн зассан' };
+  const text = String(sug.new || '').replace(/\s*\n+\s*/g, ' ').trim();
+  if (!text || text.length > MAX_TEXT) return { error: 'Шинэ текст хоосон эсвэл хэт урт' };
+  const seq = (log.edits.reduce((m, e) => Math.max(m, e.seq), 0) || 0) + 1;
+  const edit = { seq, rv_id: rvId, old: sug.old, new: text, anchor: sug.block || item.anchor || null, by: 'AI (автомат)', at: C.nowIso(), status: 'applied', auto: true,
+    note: sug.note || '', ai_run_id: sug.ai_run_id || null, numbers: sug.numbers || [], draft: text.includes(DRAFT_TAG) || (sug.numbers || []).some(x => x.src === 'none') };
+  const cur = build(fs.readFileSync(base.file), log.edits);
+  const r = applyOne(cur.xml, edit);
+  if (r.error) return { error: ERR[r.error] || r.error };
+  log.edits.push({ ...edit, block: r.id, before: r.before, after: r.after });
+  save(rootId, n, log, base);
+  return { ok: true, edit: log.edits[log.edits.length - 1] };
+}
+/** autofix.json өөрчлөгдсөний дараа (comment) Word файлуудыг дахин үүсгэнэ */
+function rebuild(rootId, n) {
+  const fb = feedback(rootId, n); if (!fb) return;
+  const base = baseOf(fb); if (base.reason) return;
+  save(rootId, n, readLog(rootId, n), base);
+}
+
 /** Буцаах: нэг засвар (seq) эсвэл бүгдийг ('all') */
 function revert(rootId, n, which, by) {
   const fb = feedback(rootId, n);
@@ -263,12 +405,13 @@ function revert(rootId, n, which, by) {
   return { ok: true, reverted: targets.map(e => ({ seq: e.seq, rv_id: e.rv_id })), conflicts: Object.values(results).filter(x => x !== 'ok').length, edits: log.edits };
 }
 
-/** Засварласан файл (засвар хийгээгүй бол null) */
-function working(rootId, n) {
+/** Засварласан файл (засвар хийгээгүй бол null). tracked: Track Changes, comment-той хувилбар (Word-оор хянах) */
+function working(rootId, n, tracked) {
   const log = C.readJson(logFile(rootId, n));
-  const f = path.join(edDir(rootId, n), 'working.docx');
-  if (!log || !fs.existsSync(f) || !log.edits.some(e => e.status === 'applied')) return null;
-  return { path: f, name: log.base?.name || 'report.docx', applied: log.edits.filter(e => e.status === 'applied').length, version: n };
+  const f = path.join(edDir(rootId, n), tracked ? 'working_tracked.docx' : 'working.docx');
+  if (!log || !fs.existsSync(f) || (!tracked && !log.edits.some(e => e.status === 'applied'))) return null;
+  const name = log.base?.name || 'report.docx';
+  return { path: f, name: tracked ? name.replace(/(\.docx)?$/i, '_AI-засвар.docx') : name, applied: log.edits.filter(e => e.status === 'applied').length, version: n };
 }
 /** Сүүлийн release хийсэн feedback-ийн засварласан файл — засварласан хувилбар илгээхэд */
 function latestWorking(rootId) {
@@ -276,4 +419,4 @@ function latestWorking(rootId) {
   return rel.length ? working(rootId, rel[rel.length - 1]) : null;
 }
 
-module.exports = { state, preview, apply, revert, working, latestWorking, scan, locate, build, applyOne };
+module.exports = { state, preview, apply, applyAuto, rebuild, revert, working, latestWorking, scan, locate, build, applyOne, feedback, edDir, DRAFT_TAG };

@@ -55,7 +55,9 @@ function targetOf(doc, anchor) {
 
 /* ---------- Prompt ---------- */
 const clip = (s, n) => (s = String(s || '')).length > n ? s.slice(0, n) + '…' : s;
-function buildPrompt(item, tgt) {
+// opts.draft (server/autofix.js): мэдээлэл дутуу засварыг ч ноорог болгож, баталгаажуулах хэсгийг тэмдэглэнэ
+const DRAFT_TAG = 'АУДИТОР БАТАЛГААЖУУЛАХ';
+function buildPrompt(item, tgt, opts = {}) {
   const unitLines = u => u.cells.length > 1 ? u.cells.map((c, i) => `<<${u.id} нүд ${i + 1}>> ${clip(c, 1500)}`).join('\n') : `<<${u.id}>> ${clip(u.cells[0], 3000)}`;
   return `You help an internal auditor fix ONE review comment directly in their Mongolian audit report. Reply with ONE JSON object only — no prose, no code fences.
 
@@ -74,9 +76,9 @@ ${tgt.context.map(unitLines).join('\n') || '(none)'}
 
 RULES
 1. Propose exactly one replacement inside ONE target paragraph/cell. "old" must be copied character-for-character from that target text (tokens such as [PERSON-0001] included); "new" replaces it. Pick the smallest span that fully fixes the comment — a phrase, a sentence, or the whole paragraph/cell.
-2. Use only facts, numbers, names and terms already present in the report text or the review comment above. Never invent numbers, dates, names, findings, causes or evidence. If the fix needs a value the auditor must supply, put a placeholder in square brackets, e.g. [___ тоо оруулах].
+2. Use only facts, numbers, names and terms already present in the report text or the review comment above. Never invent numbers, dates, names, findings, causes or evidence. ${opts.draft ? `If the fix needs a fact, value, cause, management response or evidence that is not in the text above, still write the best draft sentence, but put every such part in square brackets starting with «${DRAFT_TAG}:», e.g. [${DRAFT_TAG}: хариуцагчийн нэр], [${DRAFT_TAG}: зөрчилтэй зээлийн тоо] — the auditor fills these in from evidence.` : 'If the fix needs a value the auditor must supply, put a placeholder in square brackets, e.g. [___ тоо оруулах].'}
 3. Copy tokens like [PERSON-0001] verbatim; never guess real values. Formal Mongolian, the report's own terminology. No comments, quotes or "..." inside "new".
-4. If the comment cannot be fixed by rewriting text in one target paragraph/cell (it needs new testing or analysis, a new section, an attachment, restructuring a table, or changes in several places), do not force it.
+4. If the comment cannot be fixed by rewriting text in one target paragraph/cell (it needs new testing or analysis, a new section, an attachment, restructuring a table, or changes in several places), do not force it.${opts.draft ? ' A missing value alone is NOT a reason — draft it with the bracket marker from rule 2.' : ''}
 
 OUTPUT (one of):
 {"fixable": true, "old": "<exact text from target>", "new": "<replacement>", "note": "<one short Mongolian sentence: what changed and why>"}
@@ -130,7 +132,7 @@ function numberSources(newText, oldText, doc, item) {
 }
 
 /** Нэг саналд найруулга бэлтгэнэ: { ok, suggestion } эсвэл { error, code } */
-async function suggest(rootId, n, rvId, by) {
+async function suggest(rootId, n, rvId, by, opts = {}) {
   const fbRaw = C.readJson(path.join(jdir(rootId), 'feedback', `feedback_v${n}.json`));   // token-той
   if (!fbRaw) return { error: 'Энэ хувилбарт feedback илгээгдээгүй байна', code: 404 };
   const item = (fbRaw.items || []).find(x => x.id === rvId);
@@ -144,14 +146,22 @@ async function suggest(rootId, n, rvId, by) {
   running.add(key);
   const cwd = path.join(jdir(rootId), 'edits', '_ai');
   fs.mkdirSync(cwd, { recursive: true });
-  const prompt = buildPrompt(item, tgt), t0 = Date.now();
+  const prompt = buildPrompt(item, tgt, opts), t0 = Date.now();
   const runId = AL.nextRunId();
   let r, err;
   try { r = await ask(prompt, cwd); } catch (e) { err = e; } finally { running.delete(key); }
   const model = r && r.modelUsage ? Object.keys(r.modelUsage)[0] || null : null;
-  const logRun = (status, extra = {}) => { try { AL.append('ai', { type: 'AI_SUGGEST', ai_run_id: runId, job: rootId, version: n, rv_id: rvId, prompt_template_id: TEMPLATE_ID,
+  const logRun = (status, extra = {}) => { try { AL.append('ai', { type: opts.draft ? 'AI_AUTOFIX' : 'AI_SUGGEST', ai_run_id: runId, job: rootId, version: n, rv_id: rvId, prompt_template_id: TEMPLATE_ID,
     prompt_sha256: crypto.createHash('sha256').update(prompt).digest('hex'), model, cost_usd: r?.total_cost_usd ?? null, duration_ms: Date.now() - t0, status, reviewer: by, ...extra }); } catch { /* лог */ } };
   if (err) { logRun('failed', { error: String(err.message).slice(0, 300) }); return { error: err.message, code: 502 }; }
+  // Claude ажиллаж чадаагүй (нэвтрээгүй, эрх дууссан г.м.) — шалтгааныг ил харуулна
+  if (r.is_error) {
+    const msg = String(r.result || r.terminal_reason || 'тодорхойгүй алдаа');
+    logRun('failed', { error: msg.slice(0, 300) });
+    return { error: /not logged in|\/login|api key|authenticat/i.test(msg)
+      ? 'Сервер дээр Claude нэвтрээгүй байна — админ серверт «claude» ажиллуулж /login хийнэ (эсвэл ANTHROPIC_API_KEY тохируулна)'
+      : `Claude ажиллаж чадсангүй: ${msg.slice(0, 200)}`, code: 502 };
+  }
   const ans = parseReply(r.result);
   if (!ans || typeof ans.fixable !== 'boolean') { logRun('bad_reply'); return { error: 'AI-ийн хариуг уншиж чадсангүй — дахин оролдоно уу', code: 502 }; }
   // Алдагдал шалгах (оролт далдалсан тул жинхэнэ утга гарах ёсгүй)
@@ -169,7 +179,7 @@ async function suggest(rootId, n, rvId, by) {
     }
     sug = { fixable: true, old: oldText, new: newText, note: String(ans.note || '').slice(0, 500), block: unit.id, numbers: numberSources(newText, oldText, doc, item) };
   } else sug = { fixable: false, reason: String(ans.reason || 'Текст солиод засагдахгүй').slice(0, 500) };
-  Object.assign(sug, { ai_run_id: runId, at: C.nowIso(), by });
+  Object.assign(sug, { ai_run_id: runId, at: C.nowIso(), by, ...(opts.draft ? { auto: true } : {}) });
   const all = readAll(rootId, n);
   all[rvId] = sug;
   fs.mkdirSync(edDir(rootId, n), { recursive: true });
@@ -178,4 +188,4 @@ async function suggest(rootId, n, rvId, by) {
   return { ok: true, suggestion: JSON.parse(C.restoreTokens(jdir(rootId), JSON.stringify(sug), true)) };
 }
 
-module.exports = { suggest, list, buildPrompt, targetOf, parseReply, numberSources, TEMPLATE_ID };
+module.exports = { suggest, list, buildPrompt, targetOf, parseReply, numberSources, TEMPLATE_ID, DRAFT_TAG };
