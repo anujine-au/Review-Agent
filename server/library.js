@@ -83,6 +83,8 @@ function triggerCounts() {
   let dirs = [];
   try { dirs = fs.readdirSync(C.PATHS.jobs).filter(d => /^\d{8}-\d{6}-[a-z0-9]{6}$/.test(d)); } catch { /* jobs алга */ }
   for (const d of dirs) {
+    // Аудиторын «Өөрөө шалгах» нь илгээгдэх тайлангийн давхар хяналт — статистикт тоолохгүй
+    if ((C.readJson(path.join(C.PATHS.jobs, d, 'job.json')) || {}).kind === 'precheck') continue;
     const out = path.join(C.PATHS.jobs, d, 'sandbox', 'output');
     const f = C.readJson(path.join(out, 'review_findings.json')), rc = C.readJson(path.join(out, 'recheck.json'));
     const issues = [...(Array.isArray(f?.issues) ? f.issues : []), ...(Array.isArray(rc?.new_issues) ? rc.new_issues : [])];

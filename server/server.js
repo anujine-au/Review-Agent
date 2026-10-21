@@ -66,6 +66,7 @@ const PORT = Number(opt('--port', LAN ? 8443 : 8080));
 const RETENTION_DAYS = Number(opt('--retention-days', 90));   // 2026-10-12 хэрэглэгчийн шийдвэр: 7 → 90 хоног (эх файлыг хувилбараар хадгалах)
 const SESSION_MINUTES = Number(opt('--session-minutes', 0));   // 0 = идэвхгүй байдлаар автоматаар гаргахгүй (2026-10-12 хэрэглэгчийн шийдвэр)
 const MAX_UPLOAD_MB = Number(opt('--max-upload-mb', 100));
+const PRECHECK_MAX = Number(opt('--precheck-max', 3));   // «Өөрөө шалгах»-ыг нэг тайланд хэдэн удаа ажиллуулах (бүрэн AI хяналт ~10 мин, ~$3)
 const P = C.PATHS;
 
 for (const d of [P.jobs, P.logs]) fs.mkdirSync(d, { recursive: true });
@@ -280,7 +281,8 @@ function jobSummary(id) {
   o.cycle_no = job.parent_id ? (job.round || 1) + 1 : 1;
   if (job.finalized) o.finalized = job.finalized;
   // Ажлын урсгал — гинжийн нэг төлөв (root дээр хадгалагдана)
-  try { const w = WF.stateOf(job.parent_id || id); o.workflow = { state: w.state, label: w.label, version: w.version, released: w.released }; } catch { /* ignore */ }
+  if (job.kind === 'precheck') o.precheck = { group: job.precheck_group || id, submitted_as: job.submitted_as || null };
+  else try { const w = WF.stateOf(job.parent_id || id); o.workflow = { state: w.state, label: w.label, version: w.version, released: w.released }; } catch { /* ignore */ }
   if (!job.parent_id) o.team = WF.teamOf(id);
   if (job.parent_id) {
     o.parent_id = job.parent_id; o.round = job.round || 1;
@@ -323,7 +325,11 @@ function filterForAuditor(dir, text) {
   if (Array.isArray(f.issues)) f.issues = f.issues.filter(it => ['APPROVED', 'EDITED'].includes(dec[it.id]?.decision))
     .map(it => dec[it.id].decision === 'EDITED' && dec[it.id].edited_text ? { ...it, required_action: dec[it.id].edited_text } : it);
   delete f.dropped_issues;
-  // Захирлын сургамж — AI-ийн дотоод мэдээлэл, аудиторт харуулахгүй
+  return stripLessons(f);
+}
+// Захирлын сургамж — AI-ийн дотоод мэдээлэл, аудиторт харуулахгүй
+function stripLessons(f) {
+  if (typeof f === 'string') { try { f = JSON.parse(f); } catch { return f; } }
   for (const k of ['lessons_applied', 'lessons_used', 'lessons_available']) delete f[k];
   for (const it of f.issues || []) delete it.lesson_refs;
   return JSON.stringify(f);
@@ -358,6 +364,43 @@ function listJobIds() { return fs.readdirSync(P.jobs).filter(isJobId).sort(); }
 
 function removeJob(dir) { clearWorkFiles(dir); C.rmrf(dir); }
 
+/* ---------- Өөрөө шалгах (2026-10-21) ----------
+  Аудитор захиралд илгээхээсээ өмнө бүрэн AI хяналтыг өөрөө ажиллуулж, бүх саналыг шууд харна (засаад дахин шалгаж болно).
+  Тусдаа job (kind: 'precheck') — ажлын урсгал, хувилбарын гинжид ордоггүй; нэг тайлангийн шалгалтууд = precheck_group.
+  Илгээхэд шинэ job нь precheck_group-ийг авч, шалгалтууд submitted_as = <root> болно → захирал тайлан дээрээ харна. */
+const isPrecheck = id => jobMeta(id).kind === 'precheck';
+const precheckGroup = g => g ? listJobIds().filter(x => { const j = jobMeta(x); return j.kind === 'precheck' && j.precheck_group === g; }) : [];
+const prechecksRan = g => precheckGroup(g).filter(x => jobStatus(jobDir(x)) !== 'draft');
+function precheckRow(x) {
+  const s = jobSummary(x);
+  return { id: x, created: s.created, created_by: s.created_by, created_by_name: s.created_by_name, status: s.status, verdict: s.verdict, r1: s.r1, r2: s.r2, r3: s.r3, r4: s.r4 };
+}
+// Илгээх / дахин шалгахад холбох шалгалт: харах эрхтэй, илгээгдээгүй precheck байх ёстой
+function precheckLink(session, raw) {
+  const pid = String(raw || '');
+  if (!isJobId(pid) || !fs.existsSync(jobDir(pid)) || !canSeeJob(session, jobDir(pid))) return { error: 'Өөрөө шалгасан тайлан олдсонгүй', code: 404 };
+  const j = jobMeta(pid);
+  if (j.kind !== 'precheck') return { error: 'Энэ нь өөрөө шалгасан тайлан биш', code: 400 };
+  if (j.submitted_as) return { error: 'Энэ шалгалтын тайлан аль хэдийн захиралд илгээгдсэн', code: 409 };
+  return { id: pid, job: j, group: j.precheck_group || pid };
+}
+// Оруулаагүй ангиллын файлыг (жишээ нь өөрчлөгдөөгүй Excel, хөтөлбөр) өмнөх шалгалтын эх файлаас хуулна
+function copyMissingFrom(srcId, dir) {
+  if (!srcId) return;
+  const have = new Set(jobFiles(dir).map(f => f.category));
+  for (const it of ORIG.list(jobDir(srcId)).filter(x => !have.has(x.cat))) {
+    const f = ORIG.fileOf(jobDir(srcId), it.cat, it.name);
+    if (f) { fs.mkdirSync(path.join(dir, 'input', it.cat), { recursive: true }); fs.copyFileSync(f.path, path.join(dir, 'input', it.cat, it.name)); }
+  }
+}
+// Тасарсан AI-г дахин эхлүүлэхэд: эх файлыг originals/-аас input/ руу сэргээнэ
+function restoreInputs(dir) {
+  for (const it of ORIG.list(dir)) {
+    const src = ORIG.fileOf(dir, it.cat, it.name), dest = path.join(dir, 'input', it.cat, it.name);
+    if (src && !fs.existsSync(dest)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src.path, dest); }
+  }
+}
+
 function startNext() {
   if (active) return;
   const next = listJobIds().find(id => jobStatus(jobDir(id)) === 'queued');
@@ -370,6 +413,12 @@ function startNext() {
   active.promise = runJob(dir, ctl).catch(e => console.error('runJob:', e)).finally(() => {
     console.log(`[${C.timeHms()}] END   ${next} (${jobStatus(dir)})`);
     try { WF.sync(WF.rootOf(next)); } catch (e) { console.error('workflow sync:', e.message); }   // AI дуусав → CAE_REVIEW
+    const jn = jobMeta(next);
+    if (jn.kind === 'precheck') {
+      const st = jobStatus(dir), au = jn.audit || {};
+      NT.send(WF.teamOf(next), { kind: 'PRECHECK', job: next, audit: au,
+        text: `${[au.code, au.branch].filter(Boolean).join(' ')}: өөрөө шалгасан AI хяналт ${st === 'done' ? 'дууслаа — засах зүйлсээ харна уу' : 'тасарлаа — дахин эхлүүлнэ үү'}`.trim() });
+    }
     active = null; setImmediate(startNext);
   });
 }
@@ -398,7 +447,9 @@ function housekeeping() {
     const created = job && job.created ? new Date(job.created) : fs.statSync(dir).birthtime;
     // Хувилбар устгагдахгүй: эцэслэн батлагдаагүй, идэвхтэй урсгалтай гинжийг автомат устгалаас чөлөөлнө (§6)
     let wfActive = false;
-    try { wfActive = ['SUBMITTED', 'CAE_REVIEW', 'RETURNED', 'RESUBMITTED'].includes(WF.stateOf(WF.rootOf(id)).state); } catch { /* ignore */ }
+    // Өөрөө шалгасан job: илгээгдсэн бол тухайн тайлангийн урсгалаар, илгээгээгүй бол энгийн хугацаагаар
+    const wfRoot = job && job.kind === 'precheck' ? job.submitted_as : WF.rootOf(id);
+    try { wfActive = !!wfRoot && ['SUBMITTED', 'CAE_REVIEW', 'RETURNED', 'RESUBMITTED'].includes(WF.stateOf(wfRoot).state); } catch { /* ignore */ }
     if (!wfActive && !['extracting', 'running'].includes(status) && created < Date.now() - RETENTION_DAYS * 86400000) {
       removeJob(dir); accessLog('system', 'RETENTION_DELETE', id);
       console.log(`[${C.timeHms()}] ${RETENTION_DAYS} хоног хэтэрсэн review устгагдлаа: ${id}`);
@@ -645,7 +696,11 @@ async function handle(req, res) {
   }
   if (m === 'GET' && p === '/api/jobs') {
     const internal = seesInternals(session);
-    return sendJson(res, 200, { jobs: listJobIds().reverse().filter(id => canSeeJob(session, jobDir(id))).map(jobSummary).map(o => internal ? o : WF.restrictJob(o)) });
+    const ids = listJobIds().reverse().filter(id => canSeeJob(session, jobDir(id)));
+    // Өөрөө шалгасан job-ууд тайлангийн жагсаалтад орохгүй; захиралд илгээгээгүйг нь тусад нь (илгээсэн нь тайлан дээрээ харагдана)
+    const pcs = ids.filter(isPrecheck);
+    return sendJson(res, 200, { jobs: ids.filter(id => !pcs.includes(id)).map(jobSummary).map(o => internal ? o : WF.restrictJob(o)),
+      prechecks: pcs.filter(id => !jobMeta(id).submitted_as).map(jobSummary) });
   }
 
   // Мэдэгдэл (вэб хонх)
@@ -713,6 +768,16 @@ async function handle(req, res) {
       const round = listJobIds().filter(x => jobMeta(x).parent_id === rootId).length + 1;
       parent = { id: rootId, round, job: jobMeta(rootId) };
     }
+    // Өөрөө шалгах: precheck = шинэ шалгалт (precheck_prev = өмнөх шалгалтын цуврал үргэлжлүүлэх); precheck_id = шалгасан тайланг захиралд илгээх
+    let pcGroup = null, pcPrev = null;
+    if ((body.precheck || body.precheck_id) && body.parent_id) return sendErr(res, 400, 'Өөрөө шалгах нь зөвхөн анхны илгээлтэд');
+    if (body.precheck_prev || body.precheck_id) {
+      pcPrev = precheckLink(session, body.precheck_prev || body.precheck_id);
+      if (pcPrev.error) return sendErr(res, pcPrev.code, pcPrev.error);
+      pcGroup = pcPrev.group;
+    }
+    if (body.precheck && pcGroup && prechecksRan(pcGroup).length >= PRECHECK_MAX)
+      return sendErr(res, 409, `Өөрөө шалгах дээд тоо (${PRECHECK_MAX} удаа) хүрсэн — тайлангаа захиралд илгээнэ үү`);
     const dir = jobDir(id);
     for (const cat of C.CATEGORIES) fs.mkdirSync(path.join(dir, 'input', cat), { recursive: true });
     const audit = {};
@@ -725,10 +790,13 @@ async function handle(req, res) {
     const mask = parent ? parent.job.mask !== false : body.mask !== false, sendImages = body.send_images === true; // анхдагчаар далдална, зураг илгээхгүй
     // Баг (зөвхөн анхны хүсэлтэд): аудитор / ахлах аудитор role-той идэвхтэй хэрэглэгчид
     const okTeam = new Set(U.list().filter(u => !u.disabled && ['auditor', 'lead_auditor'].includes(u.role)).map(u => u.username));
-    const team = parent ? undefined : [...new Set((Array.isArray(body.team) ? body.team : []).map(x => U.normUser(x)).filter(x => okTeam.has(x) && x !== who))].slice(0, 20);
+    let team = parent ? undefined : [...new Set((Array.isArray(body.team) ? body.team : []).map(x => U.normUser(x)).filter(x => okTeam.has(x) && x !== who))].slice(0, 20);
+    // Өмнөх шалгалтын баг (шалгасан хүн өөр бол түүнийг ч) өвлөнө — бүгд шалгалтын үр дүнгээ харсаар байна
+    if (pcPrev) team = [...new Set([...team, ...WF.teamOf(pcPrev.id)])].filter(x => x !== who).slice(0, 20);
     C.writeJson(path.join(dir, 'job.json'), { id, created: C.nowIso(), created_by: who, audit, queued: false, mask, send_images: sendImages,
-      ...(parent ? { parent_id: parent.id, round: parent.round } : { team }) });
-    log('JOB_CREATE', `${id} mask=${mask} images=${sendImages}${parent ? ` recheck_of=${parent.id} round=${parent.round}` : ''}`);
+      ...(parent ? { parent_id: parent.id, round: parent.round } : { team }),
+      ...(body.precheck ? { kind: 'precheck', precheck_group: pcGroup || id } : pcGroup ? { precheck_group: pcGroup } : {}) });
+    log('JOB_CREATE', `${id} mask=${mask} images=${sendImages}${parent ? ` recheck_of=${parent.id} round=${parent.round}` : ''}${body.precheck ? ` precheck group=${pcGroup || id}` : pcGroup ? ` from_precheck=${pcGroup}` : ''}`);
     return sendJson(res, 201, { id });
   }
 
@@ -740,7 +808,9 @@ async function handle(req, res) {
     if (!fs.existsSync(dir) || !canSeeJob(session, dir)) return sendErr(res, 404, 'Job not found');
     const status = jobStatus(dir);
     const isOwner = (C.readJson(path.join(dir, 'job.json')) || {}).created_by === who;
-    const rootId = WF.rootOf(id), internal = seesInternals(session), inTeam = WF.isTeam(rootId, who);
+    const rootId = WF.rootOf(id), inTeam = WF.isTeam(rootId, who), jobM = jobMeta(id), isPc = jobM.kind === 'precheck';
+    // Өөрөө шалгасан job-ийн бүх үр дүнг баг (аудитор) өөрөө харна — захирлын шүүлтгүй
+    const internal = seesInternals(session) || (isPc && (isOwner || inTeam));
     // §5: AI-ийн дотоод үр дүнд хандах бүх замыг нэг газар хаана (UI-д нуух хангалтгүй)
     // Үл хамаарах: feedback илгээгдсэн хувилбарын тайлангийн бичвэр (/document) — аудитор саналыг өөрийн тайлан дээр харна.
     // Бичвэр нь аудиторын өөрийн тайлан (AI-ийн үр дүн биш); илгээхээс өмнө хаалттай хэвээр.
@@ -780,11 +850,24 @@ async function handle(req, res) {
       }
       const ds = C.readJson(path.join(dir, 'docs', 'state.json'));
       if (ds && ds.url) o.docs = { url: ds.url, published_at: ds.published_at, last_sync: ds.last_sync };
+      // Өөрөө шалгасан тайлан: ажлын урсгалгүй, захирлын үйлдэлгүй; цувралын бусад шалгалт, үлдсэн тоо
+      if (isPc) {
+        const g = jobM.precheck_group || id, mine = isOwner || inTeam, ran = prechecksRan(g).length;
+        delete o.workflow; delete o.version_no; o.cycle_warning = false;
+        o.can = { decide: false, release: false, finalize: false, runAI: false, resubmit: false, cancelWorkflow: false, downloadFinal: false,
+          precheck: mine && U.can(session.role, 'job.create') && !jobM.submitted_as };
+        o.precheck = { group: g, submitted_as: jobM.submitted_as || null, max: PRECHECK_MAX, used: ran, left: Math.max(0, PRECHECK_MAX - ran),
+          n: precheckGroup(g).indexOf(id) + 1, series: precheckGroup(g).map(precheckRow) };
+      } else if (jobM.precheck_group) {
+        // Захирал (болон баг) — аудитор илгээхээсээ өмнө өөрөө шалгасан түүх
+        o.prechecks = precheckGroup(jobM.precheck_group).filter(x => canSeeJob(session, jobDir(x))).map(precheckRow);
+      }
       const ev = path.join(dir, 'events.jsonl');
       if (!internal) {
         // Багийн гишүүнд: зөвхөн нэр, код, огноо, хувилбар, төлөв, өөрийн оруулсан файл (§5)
         const r = WF.restrictJob(o);
         r.workflow = { state: wfs.state, label: wfs.label, version: wfs.version, released: wfs.released };
+        if (o.prechecks) r.prechecks = o.prechecks;
         return sendJson(res, 200, r);
       }
       o.events = fs.existsSync(ev) ? fs.readFileSync(ev, 'utf8').split('\n').filter(Boolean).slice(-80).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : [];
@@ -866,8 +949,12 @@ async function handle(req, res) {
       if (status !== 'draft') return sendErr(res, 409, `Төлөв: ${status}`);
       if (!fs.existsSync(path.join(P.prompts, 'system_prompt.md'))) return sendErr(res, 409, 'Review-ийн нөхцөл (prompts/system_prompt.md) тохируулаагүй байна. Шинэ нөхцөл оруулсны дараа review хийх боломжтой.');
       const job = C.readJson(path.join(dir, 'job.json'));
+      if (job.kind === 'precheck') return sendErr(res, 409, 'Өөрөө шалгасан тайланг шууд илгээхгүй — «Захиралд илгээх»-ээр шинэ илгээлт үүсгэнэ');
       const body = await readJsonBody(req);
       const isResubmit = !!job.parent_id;
+      // Өөрөө шалгаснаас илгээх: оруулаагүй ангиллын файлыг (жишээ нь өөрчлөгдөөгүй Excel, хөтөлбөр) сүүлийн шалгалтаас хуулна
+      const pcFrom = !isResubmit && job.precheck_group ? prechecksRan(job.precheck_group).pop() : null;
+      if (pcFrom && !jobMeta(pcFrom).submitted_as) copyMissingFrom(pcFrom, dir);
       if (rest === '/resubmit' && !isResubmit) return sendErr(res, 400, 'Энэ бол анхны хүсэлт — /submit ашиглана уу');
       const wf = WF.stateOf(rootId);
       if (!isResubmit && wf.state !== 'DRAFT') return sendErr(res, 409, `Төлөв «${wf.label}» — дахин илгээх боломжгүй`);
@@ -905,7 +992,10 @@ async function handle(req, res) {
       // transition нь root-ийн job.json-д workflow бичсэн тул дахин уншиж нэмнэ
       // AI шууд ажиллахгүй — захирал «AI хянуулах» дарахыг хүлээнэ (захиралд олон тайлан ирдэг тул өөрөө сонгоно, 2026-10-13)
       C.writeJson(path.join(dir, 'job.json'), { ...(C.readJson(path.join(dir, 'job.json')) || job), queued: false, awaiting_ai: true, files, submitted_by: who, submitted_at: C.nowIso(), ...(isResubmit ? { resubmit_note: note } : {}) });
-      log('JOB_SUBMIT', `${id} files=${files.length} v${version}`);
+      // Өөрөө шалгасан цувралыг энэ тайлантай холбоно — захирал тайлан дээрээ харна
+      const pcIds = !isResubmit ? precheckGroup(job.precheck_group) : [];
+      for (const x of pcIds) { const f = path.join(jobDir(x), 'job.json'); C.writeJson(f, { ...(C.readJson(f) || {}), submitted_as: rootId }); }
+      log('JOB_SUBMIT', `${id} files=${files.length} v${version}${pcIds.length ? ` prechecks=${pcIds.length}` : ''}`);
       auditLog('submission', { job: id, root: rootId, version, user: who, role: session.role, cycle_no: version, parent: job.parent_id || null,
         files: files.map(f => ({ category: f.category, sha256: AL.fileSha256(path.join(dir, 'input', f.category, f.name)), size: f.size })) });
       // Захиралд мэдэгдэл; захирал бүртгэлгүй бол admin-д (хүсэлт хэнд ч хүрэхгүй үлдэхээс сэргийлнэ)
@@ -914,7 +1004,7 @@ async function handle(req, res) {
       if (!caes.length) caes = actUsers.filter(u => u.role === 'admin').map(u => u.username);
       const au = jobMeta(rootId).audit || {};
       NT.send(caes, { kind: isResubmit ? 'RESUBMITTED' : 'SUBMITTED', job: rootId, version, audit: au,
-        text: `${isResubmit ? `Засварласан хувилбар (v${version}) хянуулах хүсэлт ирлээ` : 'Шинэ хянуулах хүсэлт ирлээ'}: ${[au.code, au.branch, au.name].filter(Boolean).join(' · ')} — илгээсэн: ${session.name || who}. AI хяналтыг «AI хянуулах» товчоор эхлүүлнэ.` });
+        text: `${isResubmit ? `Засварласан хувилбар (v${version}) хянуулах хүсэлт ирлээ` : 'Шинэ хянуулах хүсэлт ирлээ'}: ${[au.code, au.branch, au.name].filter(Boolean).join(' · ')} — илгээсэн: ${session.name || who}.${pcIds.length ? ` Аудитор илгээхээсээ өмнө ${pcIds.length} удаа өөрөө шалгасан.` : ''} AI хяналтыг «AI хянуулах» товчоор эхлүүлнэ.` });
       return sendJson(res, 200, { ok: true, version });
     }
 
@@ -928,10 +1018,7 @@ async function handle(req, res) {
       if (!fs.existsSync(path.join(P.prompts, 'system_prompt.md'))) return sendErr(res, 409, 'Review-ийн нөхцөл (prompts/system_prompt.md) тохируулаагүй байна.');
       // Тасарсан бол: эх файлыг originals/-аас сэргээж, хуучин гүйцэтгэлийн үлдэгдлийг цэвэрлэнэ
       if (status !== 'pending') {
-        for (const it of ORIG.list(dir)) {
-          const src = ORIG.fileOf(dir, it.cat, it.name), dest = path.join(dir, 'input', it.cat, it.name);
-          if (src && !fs.existsSync(dest)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src.path, dest); }
-        }
+        restoreInputs(dir);
         if (!jobFiles(dir).some(f => f.category === 'report')) return sendErr(res, 409, 'Эх файл хадгалагдаагүй тул дахин шалгах боломжгүй — аудитор дахин илгээнэ үү');
         C.rmrf(path.join(dir, 'sandbox', 'output')); C.rmrf(path.join(dir, 'state.json'));
       }
@@ -941,6 +1028,29 @@ async function handle(req, res) {
       auditLog('ai.start', { job: id, root: rootId, version: wf.version, user: who, role: session.role, retry: status !== 'pending' });
       startNext();
       return sendJson(res, 200, { ok: true, version: wf.version });
+    }
+
+    // Аудитор «Өөрөө шалгах» — илгээхээс өмнөх бүрэн AI хяналт (захирлын «AI хянуулах»-гүй, шууд дараалалд). Тасарсан бол дахин.
+    if (m === 'POST' && rest === '/precheck') {
+      if (!canEdit) return deny();
+      if (!isPc) return sendErr(res, 400, 'Энэ нь өөрөө шалгах тайлан биш');
+      if (jobM.submitted_as) return sendErr(res, 409, 'Захиралд илгээгдсэн тул дахин шалгах боломжгүй');
+      if (!['draft', 'failed', 'cancelled'].includes(status)) return sendErr(res, 409, `AI төлөв: ${status}`);
+      if (!fs.existsSync(path.join(P.prompts, 'system_prompt.md'))) return sendErr(res, 409, 'Review-ийн нөхцөл (prompts/system_prompt.md) тохируулаагүй байна.');
+      const g = jobM.precheck_group || id;
+      if (status === 'draft' && prechecksRan(g).length >= PRECHECK_MAX) return sendErr(res, 409, `Өөрөө шалгах дээд тоо (${PRECHECK_MAX} удаа) хүрсэн — тайлангаа захиралд илгээнэ үү`);
+      if (status !== 'draft') { restoreInputs(dir); C.rmrf(path.join(dir, 'sandbox', 'output')); C.rmrf(path.join(dir, 'state.json')); }
+      else copyMissingFrom(prechecksRan(g).filter(x => x !== id).pop(), dir);   // дахин шалгахад өөрчлөгдөөгүй файлыг өмнөх шалгалтаас
+      const files = jobFiles(dir);
+      if (!files.some(f => f.category === 'report')) return sendErr(res, 400, 'Үндсэн тайлан (report) оруулаагүй байна');
+      if (!files.some(f => f.category === 'program')) return sendErr(res, 400, 'Аудитын хөтөлбөр (Excel / Word) оруулаагүй байна — заавал');
+      if (status === 'draft') try { ORIG.snapshot(dir); } catch (e) { console.error('originals snapshot:', e.message); }
+      C.writeJson(path.join(dir, 'job.json'), { ...(C.readJson(path.join(dir, 'job.json')) || jobM), queued: true, files, ai_requested_by: who, ai_requested_at: C.nowIso() });
+      log('PRECHECK_START', `${id} group=${g}${status !== 'draft' ? ` retry(${status})` : ''}`);
+      auditLog('precheck.start', { job: id, group: g, n: prechecksRan(g).length, user: who, role: session.role, retry: status !== 'draft',
+        files: files.map(f => ({ category: f.category, sha256: AL.fileSha256(path.join(dir, 'input', f.category, f.name)), size: f.size })) });
+      startNext();
+      return sendJson(res, 200, { ok: true });
     }
 
     if (m === 'POST' && rest === '/cancel') {
@@ -958,10 +1068,12 @@ async function handle(req, res) {
 
     if (m === 'DELETE' && !rest) {
       // Захирал / admin — дурын тайлан; үүсгэсэн хүн — зөвхөн хэзээ ч илгээгээгүй ноорог (хяналтын бүртгэлийг хамгаална)
-      const ownDraft = isOwner && WF.stateOf(rootId).state === 'DRAFT' && WF.versions(rootId).length === 0;
+      // Өөрөө шалгасан, захиралд илгээгээгүй тайланг баг өөрөө устгана (илгээсэн бол захирлын бүртгэлд үлдэнэ)
+      const ownPc = isPc && (isOwner || inTeam) && !jobM.submitted_as;
+      const ownDraft = ownPc || (!isPc && isOwner && WF.stateOf(rootId).state === 'DRAFT' && WF.versions(rootId).length === 0);
       if (!U.can(session.role, 'job.delete') && !ownDraft) return deny();
-      // ?all=1 — тайлангийн бүх хувилбар (v1 + засварууд). Эцэслэн батлагдсан бол archive/-д хуулбар нь хэвээр үлдэнэ.
-      const ids = url.searchParams.get('all') ? WF.chain(rootId) : [id];
+      // ?all=1 — тайлангийн бүх хувилбар (v1 + засварууд) + түүнтэй холбоотой өөрөө шалгасан тайлан. Эцэслэн батлагдсан бол archive/-д хуулбар нь хэвээр үлдэнэ.
+      const ids = isPc ? [id] : url.searchParams.get('all') ? [...WF.chain(rootId), ...listJobIds().filter(x => isPrecheck(x) && jobMeta(x).submitted_as === rootId)] : [id];
       if (active && ids.includes(active.id)) return sendErr(res, 409, 'Ажиллаж байгаа review-г эхлээд зогсооно уу');
       // Нэг хувилбар: зөвхөн сүүлийн, feedback илгээгээгүй засварласан хувилбар. Өмнөх хувилбар, feedback, засвар хэвээр.
       if (ids.length === 1 && WF.chain(rootId).length > 1) {
@@ -1336,7 +1448,7 @@ async function handle(req, res) {
       if (!EXPORT_FORMATS.includes(xm[1])) return sendErr(res, 404, 'Unknown format');
       if (status !== 'done') return sendErr(res, 409, 'Review дуусаагүй байна');
       // Аудитор зөвхөн захирлын зөвшөөрсөн саналын даалгаврыг татна
-      if (xm[1] !== 'task' && !U.can(session.role, 'issue.viewAll')) return deny();
+      if (xm[1] !== 'task' && !U.can(session.role, 'issue.viewAll') && !isPc) return deny();
       let out;
       try { out = await buildExport(dir, xm[1]); } catch (e) { return sendErr(res, xm[1] === 'task' ? 409 : 500, e.message); }
       log('DOWNLOAD', `${id} export.${xm[1]}`);
@@ -1378,7 +1490,8 @@ async function handle(req, res) {
       const extra = {};
       if (url.searchParams.get('download')) { extra['Content-Disposition'] = `attachment; filename="${id}-${fname}"`; log('DOWNLOAD', `${id} ${fname}`); }
       let text = C.restoreTokens(dir, fs.readFileSync(f, 'utf8'), isJson);
-      if (!viewAll && fname === 'review_findings.json') text = filterForAuditor(dir, text);
+      // Өөрөө шалгасан тайлан: бүх санал (захирлын шийдвэр байхгүй), зөвхөн захирлын сургамжийг хасна
+      if (!viewAll && fname === 'review_findings.json') text = isPc ? stripLessons(text) : filterForAuditor(dir, text);
       return send(res, 200, isJson ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8', text, extra);
     }
   }

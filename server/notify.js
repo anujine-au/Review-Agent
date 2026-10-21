@@ -105,7 +105,7 @@ function smtpSend(cfg, rcpts, subject, body) {
 }
 
 const SUBJECT = { SUBMITTED: 'Шинэ тайлан хяналтад ирлээ', RESUBMITTED: 'Засварласан тайлан хяналтад ирлээ', RETURNED: 'Захирал тайланд санал буцаалаа',
-  APPROVED_FINAL: 'Тайлан эцэслэн батлагдлаа', CANCELLED: 'Хяналт цуцлагдлаа', AUTOFIX: 'AI засвартай тайлан бэлэн боллоо' };
+  APPROVED_FINAL: 'Тайлан эцэслэн батлагдлаа', CANCELLED: 'Хяналт цуцлагдлаа', AUTOFIX: 'AI засвартай тайлан бэлэн боллоо', PRECHECK: 'Өөрөө шалгасан AI хяналт дууслаа' };
 async function email(users, kind, job, text, audit) {
   const cfg = smtpConfig();
   if (!cfg) return;

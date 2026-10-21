@@ -322,3 +322,80 @@ test('17. Илгээгээгүй хувилбарын засах зөвлөмж�
   assert.equal((await call(tokens.aud1, 'GET', `/api/jobs/${J}/feedback/1/docx`)).status, 404, 'аудитор төсөл татсан');
   assert.equal((await call(tokens.cae1, 'GET', `/api/jobs/${J}/feedback/2/docx`)).status, 404);
 });
+
+/* ---------- Өөрөө шалгах (2026-10-21) ---------- */
+// Дууссан «өөрөө шалгах» job (fixture): workflow-гүй, kind: 'precheck'
+function makePrecheck({ created_by = 'aud1', team = [], group, issues = 4 } = {}) {
+  const id = makeJob({ created_by, team, issues, workflow: null });
+  const jf = path.join(DIRS.jobs, id, 'job.json');
+  fs.writeFileSync(jf, JSON.stringify({ ...JSON.parse(fs.readFileSync(jf, 'utf8')), kind: 'precheck', precheck_group: group || id }));
+  return id;
+}
+
+test('18. Аудитор өөрөө шалгасан бүх саналыг харна; жагсаалтад тусдаа; бусад аудитор харахгүй; шууд илгээх → 409', async () => {
+  const P1 = makePrecheck();
+  const j = await call(tokens.aud1, 'GET', `/api/jobs/${P1}`);
+  assert.equal(j.status, 200);
+  assert.ok(!j.json.restricted && j.json.workflow === undefined, 'өөрөө шалгасан job хязгаарлагдсан');
+  assert.equal(j.json.can.precheck, true); assert.equal(j.json.can.decide, false);
+  assert.equal(j.json.precheck.used, 1); assert.equal(j.json.precheck.left, 2);
+  const f = await call(tokens.aud1, 'GET', `/api/jobs/${P1}/output/review_findings.json`);
+  assert.equal(f.status, 200); assert.equal(f.json.issues.length, 4, 'шийдвэргүй санал шүүгдсэн');
+  assert.equal((await call(tokens.aud1, 'GET', `/api/jobs/${P1}/document`)).status, 200);
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${P1}/decisions`, { items: [{ id: 'RV-T-C1-001', decision: 'APPROVED' }] })).status, 403);
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${P1}/start`, {})).status, 409);
+  const list = await call(tokens.aud1, 'GET', '/api/jobs');
+  assert.ok(!list.json.jobs.some(x => x.id === P1) && list.json.prechecks.some(x => x.id === P1));
+  assert.equal((await call(tokens.lead1, 'GET', `/api/jobs/${P1}`)).status, 404, 'багт ороогүй аудитор харсан');
+  // захирал харна
+  const c = await call(tokens.cae1, 'GET', '/api/jobs');
+  assert.ok(c.json.prechecks.some(x => x.id === P1));
+  assert.equal((await call(tokens.cae1, 'GET', `/api/jobs/${P1}/output/review_findings.json`)).json.issues.length, 4);
+});
+
+test('19. Өөрөө шалгах: файл оруулаад AI шууд дараалалд (захирал хэрэггүй); дээд тоо хэтрэхэд 409', { timeout: 60000 }, async () => {
+  const c = await call(tokens.aud1, 'POST', '/api/jobs', { code: 'T-PC', branch: 'Эрдэнэт', precheck: true });
+  assert.equal(c.status, 201, String(c.buf));
+  const id = c.json.id, f = Buffer.concat([Buffer.from('504B0304', 'hex'), Buffer.from('pc')]);
+  await call(tokens.aud1, 'PUT', `/api/jobs/${id}/files?cat=report&name=R.docx`, f, true);
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/precheck`, {})).status, 400, 'хөтөлбөргүй эхэлсэн');
+  await call(tokens.aud1, 'PUT', `/api/jobs/${id}/files?cat=program&name=P.docx`, f, true);
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/precheck`, {})).status, 200);
+  let st; for (let i = 0; i < 100; i++) { st = (await call(tokens.aud1, 'GET', `/api/jobs/${id}`)).json.status; if (['failed', 'done'].includes(st)) break; await new Promise(r => setTimeout(r, 200)); }
+  assert.equal(st, 'failed');   // claude олдохгүй
+  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/precheck`, {})).status, 200, 'тасарсныг дахин эхлүүлж чадсангүй');
+  for (let i = 0; i < 100; i++) { st = (await call(tokens.aud1, 'GET', `/api/jobs/${id}`)).json.status; if (['failed', 'done'].includes(st)) break; await new Promise(r => setTimeout(r, 200)); }
+  const n = await call(tokens.aud1, 'GET', '/api/notifications');
+  assert.ok(n.json.items.some(x => x.kind === 'PRECHECK' && x.job === id), 'мэдэгдэл ирээгүй');
+  // дээд тоо: цувралд 3 шалгалт ажилласан бол дахин шалгах → 409
+  const G = makePrecheck(); makePrecheck({ group: G }); makePrecheck({ group: G });
+  const r = await call(tokens.aud1, 'POST', '/api/jobs', { code: 'T-PC', branch: 'Эрдэнэт', precheck: true, precheck_prev: G });
+  assert.equal(r.status, 409, String(r.buf));
+});
+
+test('20. Өөрөө шалгаснаас захиралд илгээх: оруулаагүй файлыг шалгалтаас авна; захирал, аудитор шалгалтын түүхийг харна', async () => {
+  const P1 = makePrecheck(), P2 = makePrecheck({ group: P1 });
+  const c = await call(tokens.aud1, 'POST', '/api/jobs', { code: 'T-1', branch: 'Эрдэнэт', precheck_id: P2 });
+  assert.equal(c.status, 201, String(c.buf));
+  const id = c.json.id;
+  const f = Buffer.concat([Buffer.from('504B0304', 'hex'), Buffer.from('fixed report')]);
+  await call(tokens.aud1, 'PUT', `/api/jobs/${id}/files?cat=report&name=Fixed.docx`, f, true);
+  const st = await call(tokens.aud1, 'POST', `/api/jobs/${id}/start`, {});
+  assert.equal(st.status, 200, String(st.buf));   // хөтөлбөрийг шалгалтаас авсан
+  assert.ok(fs.existsSync(path.join(DIRS.jobs, id, 'input', 'program', 'P.docx')), 'хөтөлбөр хуулагдаагүй');
+  assert.ok(fs.existsSync(path.join(DIRS.jobs, id, 'input', 'report', 'Fixed.docx')) && !fs.existsSync(path.join(DIRS.jobs, id, 'input', 'report', 'T_v1.docx')), 'зассан тайлангийн оронд хуучныг авсан');
+  for (const x of [P1, P2]) assert.equal(JSON.parse(fs.readFileSync(path.join(DIRS.jobs, x, 'job.json'), 'utf8')).submitted_as, id);
+  const cae = await call(tokens.cae1, 'GET', `/api/jobs/${id}`);
+  assert.deepEqual(cae.json.prechecks.map(x => x.id), [P1, P2]);
+  const aud = await call(tokens.aud1, 'GET', `/api/jobs/${id}`);
+  assert.equal(aud.json.restricted, true); assert.equal(aud.json.prechecks.length, 2);
+  // илгээсэн шалгалтыг дахин холбох, устгах боломжгүй; жагсаалтад «илгээгээгүй»-д харагдахгүй
+  assert.equal((await call(tokens.aud1, 'POST', '/api/jobs', { code: 'T-1', branch: 'Эрдэнэт', precheck_id: P2 })).status, 409);
+  assert.equal((await call(tokens.aud1, 'DELETE', `/api/jobs/${P2}`)).status, 403);
+  assert.ok(!(await call(tokens.aud1, 'GET', '/api/jobs')).json.prechecks.some(x => x.id === P2));
+  const n = await call(tokens.cae1, 'GET', '/api/notifications');
+  assert.ok(n.json.items.some(x => x.job === id && /2 удаа өөрөө шалгасан/.test(x.text)));
+  // илгээгээгүй шалгалтыг аудитор өөрөө устгана
+  const P3 = makePrecheck();
+  assert.equal((await call(tokens.aud1, 'DELETE', `/api/jobs/${P3}`)).status, 200);
+});

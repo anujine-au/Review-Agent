@@ -1125,6 +1125,7 @@ body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
     <div class="kpis" id="jobKpis"></div>
     <div class="list-filters" id="jobFilters" role="group" aria-label="Процессоор шүүх"></div>
     <div class="lfilters" id="jobFilters2"></div>
+    <div id="pcList"></div>
     <div id="jobList"></div>
   </section>
 
@@ -1183,8 +1184,9 @@ body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
       </div>
 
       <div class="submitbar">
-        <div class="note">Review-г Claude (Anthropic) гүйцэтгэдэг. Эх файлууд хувилбар бүрээр шифрлэгдэж хадгалагдана. Илгээсний дараа захирал хянаж, «Батлаад илгээх» хүртэл санал танд харагдахгүй.</div>
+        <div class="note">Review-г Claude (Anthropic) гүйцэтгэдэг. Эх файлууд хувилбар бүрээр шифрлэгдэж хадгалагдана. <span id="pcNote">«Өөрөө шалгах» — захиралд илгээхээс өмнө AI-аар шалгуулж, засах зүйлсээ шууд харна (захирал ч харна). «Хянуулах» — захиралд илгээнэ; захирал «Батлаад илгээх» хүртэл санал танд харагдахгүй.</span></div>
         <button class="btn" id="resetBtn">Цэвэрлэх</button>
+        <button class="btn" id="precheckBtn" title="Захиралд илгээхээс өмнө бүрэн AI хяналтаар шалгуулж, засах зүйлсээ харна">🔍 Өөрөө шалгах</button>
         <button class="btn primary" id="submitBtn">Хянуулах</button>
       </div>
       <div class="progress hidden" id="upProg"><div></div></div>
@@ -1608,6 +1610,8 @@ function route() {
   if (h.startsWith('#library')) { show('#vLib'); loadLibrary(h.split('/')[1]); return; }
   if (h === '#users') { if (canDo('users.manage')) loadUsers(); else go('#list'); return; }
   if (h === '#new') { if (canDo('job.create')) { setNewMode(null); show('#vNew'); } else go('#list'); return; }
+  const pm = h.match(/^#new\/pc\/([\w-]+)/);
+  if (pm) { if (canDo('job.create')) { show('#vNew'); setNewMode(null, pm[1]); } else go('#list'); return; }
   const rm = h.match(/^#recheck\/([\w-]+)/);
   if (rm) { if (canDo('job.create')) { show('#vNew'); setNewMode(rm[1]); } else go('#list'); return; }
   const m = h.match(/^#job\/([\w-]+)/);
@@ -1913,7 +1917,8 @@ function groupJobs(jobs) {
   });
 }
 // Устгах эрх: захирал / admin — дурын тайлан; үүсгэсэн хүн — илгээгээгүй ноорог
-const canDel = j => !!j && (canDo('job.delete') || (j.created_by === me?.user && (!j.workflow || j.workflow.state === 'DRAFT') && !(j.workflow?.version > 0)));
+const canDel = j => !!j && (canDo('job.delete') || (j.precheck ? !!j.can?.precheck && !ACTIVE.includes(j.status)
+  : j.created_by === me?.user && (!j.workflow || j.workflow.state === 'DRAFT') && !(j.workflow?.version > 0)));
 // Тайлан устгах — бүх хувилбар (v1 + засварууд), эх файл, тэмдэглэл, feedback. Жагсаалт ба тайлангийн хуудас хуваалцана.
 async function deleteReport(id, j) {
   const a = (j && j.audit) || {}, n = (j && j.workflow && j.workflow.version) || 1;
@@ -2024,6 +2029,23 @@ function renderJobList() {
   $('#jobList [data-ai]').forEach(b => b.onclick = async e => { e.stopPropagation(); b.disabled = true; try { await startAI(b.dataset.ai); await loadJobs(); } catch (er) { b.disabled = false; if (er.message !== 'unauthorized') alert('AI хяналт эхлүүлж чадсангүй: ' + er.message); } });
   $('#jobList [data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteReport(b.dataset.del, listJobs.find(x => x.id === b.dataset.del)); });
 }
+// Өөрөө шалгасан, захиралд илгээгээгүй тайлангууд (аудитор — өөрийнх, захирал — бүгд). Нэг тайлангийн цувралаас сүүлийнх нь.
+function renderPcList(pcs) {
+  const el = $('#pcList'); if (!el) return;
+  const last = new Map();
+  for (const p of pcs) { const g = p.precheck?.group || p.id; if (!last.has(g) || String(p.created) > String(last.get(g).created)) last.set(g, p); }
+  const rows = [...last.values()].sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+  if (!rows.length) { el.innerHTML = ''; return; }
+  const who = j => j.created_by_name || (j.created_by && !/^ip:/.test(j.created_by) ? j.created_by.replace(/^name:/, '') : '');
+  el.innerHTML = `<div class="card jobs" style="margin-bottom:14px" role="table" aria-label="Өөрөө шалгасан тайлан">
+    <div class="jrow jhead" role="row"><div role="columnheader">🔍 Өөрөө шалгасан — захиралд илгээгээгүй</div><div role="columnheader">AI шалгалт</div><div role="columnheader">Засах зүйлс</div><div role="columnheader" class="acts-col"></div></div>
+    ${rows.map(j => { const a = j.audit || {}; return `<div class="jrow job" role="row" tabindex="0" data-id="${esc(j.id)}">
+      <div style="min-width:0" role="cell"><div class="t clamp">${esc(normTitle(a.name) || normTitle(a.code) || 'Нэргүй аудит')}</div>
+        <div class="m">${a.code ? `<span class="code">${esc(normTitle(a.code))}</span>` : ''}${a.branch ? `<span>${esc(normTitle(a.branch))}</span>` : ''}<span title="${esc(fmtDate(j.created))}">${esc(relTime(j.created))}</span>${who(j) ? `<span>${esc(who(j))}</span>` : ''}</div></div>
+      <div role="cell">${procBadge(j.status)}</div><div role="cell">${notesText(j)}</div>
+      <div role="cell" class="acts acts-col"><button class="btn sm" data-open="${esc(j.id)}">Нээх</button></div></div>`; }).join('')}</div>`;
+  $$('#pcList .job').forEach(c => { c.onclick = () => go('#job/' + c.dataset.id); c.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === c) { e.preventDefault(); go('#job/' + c.dataset.id); } }; });
+}
 // Захирал «AI хянуулах» — дараалалд оруулна (нэг удаад нэг тайлан шалгагдана; бусад тайлангийн саналыг зэрэг шийдвэрлэж болно)
 const startAI = id => api(`/api/jobs/${id}/ai-review`, { method: 'POST' });
 // Экспорт татах (жагсаалт, review хуудас хуваалцана)
@@ -2054,9 +2076,10 @@ async function loadJobs() {
   let data; try { data = await api('/api/jobs'); } catch (e) { return; }
   listJobs = data.jobs;
   renderJobList();
+  renderPcList(data.prechecks || []);
   // Явагдаж буй review байвал 10 секунд тутам шинэчилнэ, байхгүй бол зогсооно
   clearInterval(pollTimer);
-  if (data.jobs.some(j => ACTIVE.includes(j.status)) && (location.hash === '#list' || location.hash === '' || location.hash === '#')) {
+  if (data.jobs.concat(data.prechecks || []).some(j => ACTIVE.includes(j.status)) && (location.hash === '#list' || location.hash === '' || location.hash === '#')) {
     pollTimer = setInterval(() => { if (location.hash === '#list' || location.hash === '' || location.hash === '#') loadJobs(); else clearInterval(pollTimer); }, 10000);
   }
 }
@@ -2157,14 +2180,33 @@ $$('.drop').forEach(d => {
 });
 // Засварласан хувилбар оруулах горим (#recheck/<id>): анхны review-ийн мэдээллийг бөглөж, нууцлалын тохиргоог анхных шиг хадгална
 let recheckParent = null;
-async function setNewMode(parentId) {
-  recheckParent = parentId;
-  $('#rcBanner').classList.toggle('hidden', !parentId);
+// Өөрөө шалгасан тайлангаас үргэлжлүүлэх (#new/pc/<id>): засаад дахин шалгах эсвэл захиралд илгээх
+let pcFrom = null;
+async function setNewMode(parentId, pcId = null) {
+  recheckParent = parentId; pcFrom = parentId ? null : pcId;
+  $('#rcBanner').classList.toggle('hidden', !parentId && !pcFrom);
   $('#stepPrivacy').classList.toggle('hidden', !!parentId);
-  $('#newTitle').textContent = parentId ? 'Засварласан хувилбар оруулах' : 'Шинэ review';
+  $('#precheckBtn').classList.toggle('hidden', !!parentId); $('#pcNote').classList.toggle('hidden', !!parentId);
+  $('#newTitle').textContent = parentId ? 'Засварласан хувилбар оруулах' : pcFrom ? 'Зассан тайлангаа оруулах' : 'Шинэ review';
   $('#newSub').textContent = parentId ? 'Аудитор зассан тайлангаа оруулна. Агент өмнөх тэмдэглэл бүрийг засагдсан эсэхээр шалгана.' : 'Тайлан, хавсралтаа оруулаад хянуулна. Үр дүн таны тайлан дээр тэмдэглэл хэлбэрээр гарна.';
-  $('#repLabel').textContent = parentId ? 'Засварласан тайлан' : 'Аудитын тайлан';
-  $('#submitBtn').textContent = parentId ? 'Засвар илгээх' : 'Хянуулах';
+  $('#repLabel').textContent = parentId || pcFrom ? 'Засварласан тайлан' : 'Аудитын тайлан';
+  $('#submitBtn').textContent = parentId ? 'Засвар илгээх' : pcFrom ? 'Захиралд илгээх' : 'Хянуулах';
+  $('#precheckBtn').textContent = pcFrom ? '🔍 Дахин шалгах' : '🔍 Өөрөө шалгах';
+  $('#precheckBtn').disabled = false; $('#precheckBtn').title = 'Захиралд илгээхээс өмнө бүрэн AI хяналтаар шалгуулж, засах зүйлсээ харна';
+  if (pcFrom) {
+    $('#rcBanner').textContent = 'Ачаалж байна…';
+    let j; try { j = await api(`/api/jobs/${pcFrom}`); } catch (e) { $('#rcBanner').textContent = 'Өөрөө шалгасан тайлан олдсонгүй: ' + e.message; return; }
+    if (pcFrom !== pcId) return;
+    const a = j.audit || {}, pc = j.precheck || {};
+    [['#fName', a.name], ['#fCode', a.code], ['#fPeriod', a.period], ['#fDate', a.report_date], ['#fObjective', a.objective]].forEach(([k, v]) => { if (!$(k).value) $(k).value = v || ''; });
+    if (a.branch && !$('#fBranch').value) { if (![...$('#fBranch').options].some(o => o.value === a.branch)) $('#fBranch').add(new Option(a.branch, a.branch)); $('#fBranch').value = a.branch; }
+    $('#optMask').checked = j.mask !== false; $('#optImages').checked = !!j.send_images;
+    $('#precheckBtn').disabled = !pc.left; if (!pc.left) $('#precheckBtn').title = `Өөрөө шалгах дээд тоо (${pc.max} удаа) хүрсэн`;
+    $('#rcBanner').innerHTML = `<b>${esc(a.name || a.code || 'Тайлан')}</b> — та өмнө нь <b>${esc(pc.used)}</b> удаа өөрөө шалгасан (дахин шалгах боломж: <b>${esc(pc.left)}</b>). Зассан тайлангаа оруулаад <b>«🔍 Дахин шалгах»</b> эсвэл <b>«Захиралд илгээх»</b> дарна уу. Оруулаагүй файл (Excel, хөтөлбөр, тайлан) сүүлийн шалгалтынхаар автоматаар ашиглагдана. Захирал таны өөрөө шалгасан үр дүнг ч харна.`;
+    $('#teamBox').classList.remove('hidden'); $('#progStar').classList.add('hidden');   // хөтөлбөрийг өмнөх шалгалтаас авна
+    loadTeam();
+    return;
+  }
 
   $('#teamBox').classList.toggle('hidden', !!parentId);
   $('#progStar').classList.toggle('hidden', !!parentId);
@@ -2305,12 +2347,16 @@ function uploadFile(id, cat, file, onProgress) {
     xhr.send(file);
   });
 }
-$('#submitBtn').onclick = async () => {
+$('#submitBtn').onclick = () => sendNew('submit');
+$('#precheckBtn').onclick = () => sendNew('precheck');
+// mode: 'submit' — захиралд илгээх; 'precheck' — өөрөө шалгах (захиралд очихгүй, AI шууд ажиллана)
+async function sendNew(mode) {
+  const isPc = mode === 'precheck';
   const msg = $('#submitMsg');
   // «🔗 Линк»-д бичсэн ч «Нэмэх» дараагүй линкийг автоматаар нэмнэ
   $$('.drop').forEach(d => { const inp = d.querySelector('.linkrow input'); if (inp && inp.value.trim()) addLink(d); });
   if ($$('.drop .linkrow input').some(i => i.value.trim())) return;   // буруу линк — addLink алдааг харуулсан
-  if (!pending.report.length) {
+  if (!pending.report.length && !pcFrom) {
     const misplaced = UP_CATS.filter(c => c !== 'report').flatMap(c => pending[c]).find(f => /\.(docx|pdf)$/i.test(f.name || ''));
     msg.textContent = misplaced
       ? `Аудитын тайлан хэсэгт файл алга. «${misplaced.name}» өөр хэсэгт орсон байна — ✕-ээр хасаад «Аудитын тайлан» хайрцагт оруулна уу.`
@@ -2322,13 +2368,14 @@ $('#submitBtn').onclick = async () => {
     const miss = [[!$('#fCode').value.trim(), '#fCode', 'аудитын дугаар'], [!$('#fBranch').value.trim(), '#fBranch', 'салбар']].filter(x => x[0]);
     if (miss.length) { msg.textContent = `Заавал бөглөх талбар: ${miss.map(x => x[2]).join(', ')}.`; msg.className = 'msg bad'; $(miss[0][1]).focus(); return; }
   }
-  if (!recheckParent && !pending.program.length) { msg.textContent = 'Аудитын хөтөлбөрийг заавал оруулна уу («Аудитын хөтөлбөр *» хайрцаг).'; msg.className = 'msg bad'; $('.drop[data-cat="program"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  if (!recheckParent && !pcFrom && !pending.program.length) { msg.textContent = 'Аудитын хөтөлбөрийг заавал оруулна уу («Аудитын хөтөлбөр *» хайрцаг).'; msg.className = 'msg bad'; $('.drop[data-cat="program"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
 
   for (const [sel, label] of [['#fPeriod', 'Аудитын хугацааны'], ['#fDate', 'Тайлангийн огнооны']]) {
     const pd = parseDates($(sel).value);
     if (pd.length >= 2 && pd[0] > pd[1]) { msg.textContent = `${label} эхлэх огноо дуусах огнооноос хойно байна.`; msg.className = 'msg bad'; return; }
   }
-  $('#submitBtn').disabled = true; msg.className = 'msg';
+  const pcDis = $('#precheckBtn').disabled;
+  $('#submitBtn').disabled = true; $('#precheckBtn').disabled = true; msg.className = 'msg';
   const prog = $('#upProg'); prog.classList.remove('hidden');
   try {
     msg.textContent = 'Review үүсгэж байна…';
@@ -2336,7 +2383,8 @@ $('#submitBtn').onclick = async () => {
       name: $('#fName').value, code: $('#fCode').value, branch: $('#fBranch').value, period: $('#fPeriod').value,
       report_date: $('#fDate').value, objective: $('#fObjective').value, notes: $('#fNotes').value,
       mask: $('#optMask').checked, send_images: $('#optImages').checked, parent_id: recheckParent || undefined,
-      team: recheckParent ? undefined : $$('#teamList input:checked').map(x => x.value) }) });
+      team: recheckParent ? undefined : $$('#teamList input:checked').map(x => x.value),
+      precheck: isPc || undefined, precheck_prev: isPc && pcFrom || undefined, precheck_id: !isPc && pcFrom || undefined }) });
     const all = UP_CATS.flatMap(cat => pending[cat].map(f => ({ cat, f })));
     const total = all.reduce((s, x) => s + x.f.size, 0) || 1; let done = 0;
     for (const { cat, f } of all) {
@@ -2354,18 +2402,22 @@ $('#submitBtn').onclick = async () => {
       await uploadFile(id, cat, f, loaded => { prog.firstElementChild.style.width = ((done + loaded) / total * 100) + '%'; });
       done += f.size;
     }
-    await api(`/api/jobs/${id}/start`, { method: 'POST', body: '{}' });
-    justSent = { id, root: recheckParent || id, at: Date.now() };
+    await api(`/api/jobs/${id}/${isPc ? 'precheck' : 'start'}`, { method: 'POST', body: '{}' });
     const sentFiles = UP_CATS.flatMap(cat => pending[cat].map(f => `${ORIG_CAT[cat] || cat}: ${f.name}`));
     resetForm(); msg.textContent = '';
-    showDone('✓ Амжилттай илгээгдлээ', `${recheckParent ? 'Засварласан хувилбар' : 'Тайлан'} захиралд хянуулахаар очлоо. Захирал хариу өгөх хүртэл төлөв «Хянагдаж байна» байна; хариу ирэхэд 🔔 мэдэгдэл ирнэ.`, sentFiles);
+    if (isPc) {
+      showDone('🔍 Өөрөө шалгах эхэллээ', 'AI таны тайланг шалгаж байна (ойролцоогоор 10 минут, өөр тайлан шалгагдаж байвал дараалалд орно). Дуусахад 🔔 мэдэгдэл ирнэ. Энэ нь захиралд илгээгдээгүй — засах зүйлсээ хараад засаж, дараа нь «Захиралд илгээх» дарна.', sentFiles);
+    } else {
+      justSent = { id, root: recheckParent || id, at: Date.now() };
+      showDone('✓ Амжилттай илгээгдлээ', `${recheckParent ? 'Засварласан хувилбар' : 'Тайлан'} захиралд хянуулахаар очлоо.${pcFrom ? ' Таны өөрөө шалгасан үр дүн ч захиралд харагдана.' : ''} Захирал хариу өгөх хүртэл төлөв «Хянагдаж байна» байна; хариу ирэхэд 🔔 мэдэгдэл ирнэ.`, sentFiles);
+    }
     go('#job/' + id);
   } catch (e) {
     if (e.message !== 'unauthorized') { msg.textContent = 'Алдаа: ' + e.message; msg.className = 'msg bad'; }
   } finally {
-    $('#submitBtn').disabled = false; setTimeout(() => { prog.classList.add('hidden'); prog.firstElementChild.style.width = 0; }, 600);
+    $('#submitBtn').disabled = false; $('#precheckBtn').disabled = pcDis; setTimeout(() => { prog.classList.add('hidden'); prog.firstElementChild.style.width = 0; }, 600);
   }
-};
+}
 
 /* ---------- markdown (бүтэн тайлан) ---------- */
 function inline(s) {
@@ -2450,7 +2502,7 @@ function renderJob() {
       <span class="spacer"></span>
     <div class="acts">
       ${(current.finalHtml = (() => {   // S10 Эцсийн батлалт — ажлын урсгалын самбарт харагдана
-        if (j.status !== 'done' || j.parent_id || j.finalized || !canDo('job.finalize') || (j.workflow && j.workflow.state !== 'CAE_REVIEW') || (j.can && !j.can.finalize)) return '';
+        if (j.status !== 'done' || j.parent_id || j.precheck || j.finalized || !canDo('job.finalize') || (j.workflow && j.workflow.state !== 'CAE_REVIEW') || (j.can && !j.can.finalize)) return '';
         const lv = finalVerdict(j), ok = ['READY', 'READY_WITH_FIXES'].includes(lv.verdict);
         return `<button class="btn sm ${ok ? 'primary' : ''}" id="finalBtn" ${ok ? '' : 'disabled'} title="${ok ? `Сүүлийн хяналт (C${lv.cycle}) — ${esc(VERDICT_MN[lv.verdict])}. Бүртгэлийн дугаар олгож, архивлана` : `Сүүлийн хяналт (C${lv.cycle}) «${esc(VERDICT_MN[lv.verdict] || 'тодорхойгүй')}» — ноцтой санал засагдсаны дараа батална`}">✔ Эцэслэн батлах</button>`;
       })(), '')}
@@ -2478,7 +2530,7 @@ function renderJob() {
       ${active ? ((canDo('job.cancelAny') || (j.created_by === me.user && canDo('job.create'))) ? `<button class="btn sm danger" id="cancelBtn">Зогсоох</button>` : '') : (canDel(j) ? `<button class="btn sm danger" id="delBtn" title="Энэ тайлангийн бүх хувилбарыг бүрмөсөн устгана">🗑 Устгах</button>` : '')}
     </div>
     </div>
-    <div class="jh-tags">${code ? `<span class="jh-code">${esc(code)}</span>` : ''}<span class="pill accent">${j.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'} · v${esc(ver)}</span><span class="pill st-${j.status}">${j.status === 'done' ? 'AI шалгалт дууссан' : esc(STATUS_MN[j.status] || j.status)}</span></div>
+    <div class="jh-tags">${code ? `<span class="jh-code">${esc(code)}</span>` : ''}<span class="pill accent">${j.precheck ? `🔍 Өөрөө шалгах · ${esc(j.precheck.n || 1)}-р шалгалт` : `${j.parent_id ? 'Засварласан хувилбар' : 'Анхны илгээлт'} · v${esc(ver)}`}</span><span class="pill st-${j.status}">${j.status === 'done' ? 'AI шалгалт дууссан' : esc(STATUS_MN[j.status] || j.status)}</span></div>
     <h1 class="page">${esc(title)}</h1>
     <div class="card jh-meta">
       ${metaCell('Салбар', esc(branch || ''))}
@@ -2488,7 +2540,7 @@ function renderJob() {
     </div>
   </div>`;
 
-  html += workflowBar(j, current.finalHtml);
+  html += j.precheck ? precheckBar(j) : workflowBar(j, current.finalHtml) + prechecksStrip(j);
   if (j.finalized) { const f = j.finalized; html += `<div class="fin-banner">✔ Эцэслэн батлагдсан · <b>${esc(f.reg_no)}</b> · ${esc(fmtDate(f.approved_at))} · ${esc(f.approver_name || f.approved_by)} · C${esc(f.final_cycle)} хяналтаар · архивт хадгалагдсан (10 жил)</div>`; }
   if (j.cycle_warning && j.status === 'done' && !j.workflow) html += `<div class="cyc-warn">⚠ 3-аас олон удаа засварлагдлаа — Аудитын менежертэй уулзах (QAIP тренд)</div>`;
   if (active) html += renderProgress(j);
@@ -2497,7 +2549,7 @@ function renderJob() {
   else if (j.status === 'done') html += rechecksStrip(j) + (j.parent_id ? renderRecheck(j) : renderResult(j));
   html += privacyNotice(j, files);
   $('#vJob').innerHTML = html;
-  bindJob(); bindWf();
+  bindJob(); bindWf(); bindPc();
   const log = $('#log'); if (log) log.scrollTop = log.scrollHeight;
 }
 
@@ -3026,12 +3078,47 @@ function renderRestricted() {
     html += `<div class="okbanner">✓ Амжилттай илгээлээ. Захирал хянаж дуустал төлөв «Хянагдаж байна» байна.</div>`;
   }
   html += sentFilesHtml();
+  html += prechecksStrip(j);
   html += feedbackHtml();
   html += `<details class="card pad" style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Бүх хувилбар, илгээсэн файлууд</summary><div style="margin-top:8px">${timelineHtml()}</div></details>`;
   $('#vJob').innerHTML = html;
   try { bindJob(); } catch (e) { /* тайлан дээрх харагдацын товчнууд */ }
   bindWf();
   const db = $('#delBtn'); if (db) db.onclick = () => deleteReport(current.id, current.job);
+}
+// Өөрөө шалгасан тайлан (аудитор илгээхээс өмнө): ажлын урсгалын самбарын оронд — юу хийх, цувралын бусад шалгалт
+function precheckBar(j) {
+  const pc = j.precheck || {}, mine = !!j.can?.precheck;
+  const failed = ['failed', 'cancelled'].includes(j.status);
+  let text, acts = '';
+  if (pc.submitted_as) text = `✓ Энэ шалгалтын дараа тайланг захиралд илгээсэн. <a href="#job/${esc(pc.submitted_as)}">Илгээсэн тайланг нээх →</a>`;
+  else if (!mine) text = 'Аудиторын өөрөө шалгасан тайлан — захиралд хараахан илгээгээгүй. Аудитор засаад илгээхэд энэ үр дүн тайлан дээр нь харагдана.';
+  else if (j.status === 'done') {
+    text = `<b>Энэ бол таны өөрийн шалгалт — захиралд хараахан илгээгдээгүй.</b> Доорх засах зүйлсийг тайландаа (Word дээр) засаад, зассан тайлангаа оруулж дахин шалгах эсвэл захиралд илгээнэ үү. Захирал энэ үр дүнг ч харна.`;
+    acts = `<button class="btn" data-pcgo="${esc(j.id)}" ${pc.left ? '' : 'disabled'} title="${pc.left ? `Дахин ${pc.left} удаа шалгах боломжтой` : `Дээд тоо (${pc.max} удаа) хүрсэн`}">🔍 Засаад дахин шалгах (${esc(pc.left)} үлдсэн)</button>
+      <button class="btn primary" data-pcgo="${esc(j.id)}">📤 Захиралд илгээх →</button>`;
+  } else if (failed) {
+    text = 'AI шалгалт тасарлаа — дахин эхлүүлнэ үү.';
+    acts = `<button class="btn primary" data-pcretry="${esc(j.id)}">↻ Дахин эхлүүлэх</button>`;
+  } else text = 'AI таны тайланг шалгаж байна — дуусахад 🔔 мэдэгдэл ирнэ. Энэ хуудсыг хааж болно.';
+  const series = (pc.series || []).length > 1 ? `<div class="sub" style="margin-top:8px">Шалгалтууд: ${pc.series.map((x, i) => x.id === j.id ? `<b>${i + 1}-р (энэ)</b>` : `<a href="#job/${esc(x.id)}">${i + 1}-р · ${esc(fmtDate(x.created))}</a>`).join(' · ')}</div>` : '';
+  return `<div class="card wfbar"><div class="wfsteps"><span>${text}</span></div>${acts ? `<div class="wfacts">${acts}</div>` : ''}${series}</div>`;
+}
+// Илгээсэн тайлан дээр: аудитор илгээхээсээ өмнө өөрөө шалгасан түүх (захирал, баг харна)
+function prechecksStrip(j) {
+  const ps = j.prechecks || [];
+  if (!ps.length) return '';
+  return `<div class="card pad" style="margin-bottom:12px"><b>🔍 Аудитор илгээхээсээ өмнө AI-аар ${ps.length} удаа өөрөө шалгасан</b>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${ps.map((x, i) => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <a href="#job/${esc(x.id)}">${i + 1}-р шалгалт · ${esc(fmtDate(x.created))}</a>${x.status === 'done' ? notesText(x) : procBadge(x.status)}</div>`).join('')}</div></div>`;
+}
+function bindPc() {
+  $$('#vJob [data-pcgo]').forEach(b => b.onclick = () => go('#new/pc/' + b.dataset.pcgo));
+  $$('#vJob [data-pcretry]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await api(`/api/jobs/${b.dataset.pcretry}/precheck`, { method: 'POST', body: '{}' }); refreshJob(b.dataset.pcretry); }
+    catch (e) { b.disabled = false; if (e.message !== 'unauthorized') alert('Эхлүүлж чадсангүй: ' + e.message); }
+  });
 }
 // Захирал / хянагч: ажлын урсгалын самбар (job хуудасны дээд хэсэгт)
 function workflowBar(j, finalHtml) {
