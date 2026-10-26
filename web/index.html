@@ -2038,8 +2038,8 @@ function renderJobList() {
   $$('#jobList [data-open]').forEach(b => b.onclick = e => { e.stopPropagation(); go('#job/' + b.dataset.open); });
   $$('#jobList [data-vg]').forEach(b => b.onclick = e => { e.stopPropagation(); const k = b.dataset.vg; openGroups.has(k) ? openGroups.delete(k) : openGroups.add(k); renderJobList(); });
   $$('#jobList [data-go]').forEach(b => b.onclick = () => go('#' + b.dataset.go));
-  $('#jobList [data-ai]').forEach(b => b.onclick = async e => { e.stopPropagation(); b.disabled = true; try { await startAI(b.dataset.ai); await loadJobs(); } catch (er) { b.disabled = false; if (er.message !== 'unauthorized') alert('AI хяналт эхлүүлж чадсангүй: ' + er.message); } });
-  $('#jobList [data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteReport(b.dataset.del, listJobs.find(x => x.id === b.dataset.del)); });
+  $$('#jobList [data-ai]').forEach(b => b.onclick = async e => { e.stopPropagation(); b.disabled = true; try { await startAI(b.dataset.ai); await loadJobs(); } catch (er) { b.disabled = false; if (er.message !== 'unauthorized') alert('AI хяналт эхлүүлж чадсангүй: ' + er.message); } });
+  $$('#jobList [data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteReport(b.dataset.del, listJobs.find(x => x.id === b.dataset.del)); });
 }
 // Өөрөө шалгасан, захиралд илгээгээгүй тайлангууд (аудитор — өөрийнх, захирал — бүгд). Нэг тайлангийн цувралаас сүүлийнх нь.
 function renderPcList(pcs) {
@@ -2110,7 +2110,7 @@ function renderPending() {
     const cat = d.dataset.cat;
     d.querySelector('.flist').innerHTML = pending[cat].map((f, i) => `<li><span class="n" title="${esc(f.url || f.name)}">${esc(f.name)}</span><span class="s${f.url || f.edits ? ' lnk' : ''}">${f.edits ? '✎ вэб засвар' : f.url ? '🔗 линк' : fmtSize(f.size)}</span><button data-cat="${cat}" data-i="${i}" title="Хасах">✕</button></li>`).join('');
   });
-  $('.flist button').forEach(b => b.onclick = () => { pending[b.dataset.cat].splice(+b.dataset.i, 1); renderPending(); });
+  $$('.flist button').forEach(b => b.onclick = () => { pending[b.dataset.cat].splice(+b.dataset.i, 1); renderPending(); });
   if (typeof optSync === 'function') optSync();
 }
 function addFiles(cat, files) {
@@ -2353,19 +2353,19 @@ function resetForm() {
   ['#fName', '#fCode', '#fBranch', '#fBranchOther', '#fPeriod', '#fWork', '#fDate', '#fObjective', '#fNotes'].forEach(s => $(s).value = ''); $('#fBranchOther').classList.add('hidden');
   $('#metaMsg').className = 'msg hidden'; detectSeq++;
   $('#optMask').checked = true; $('#optImages').checked = false;
-  $('.drop.opt').forEach(d => d.classList.add('hidden'));
+  $$('.drop.opt').forEach(d => d.classList.add('hidden'));
   pending = emptyPending(); renderPending();
 }
 $('#resetBtn').onclick = () => { resetForm(); $('#submitMsg').textContent = ''; };
 // 3-р алхам: холбогдох баримтыг сонгож нэмнэ — сонгосон эсвэл файлтай хайрцаг л харагдана
 function optSync() {
-  $('#optPick [data-opt]').forEach(b => {
+  $$('#optPick [data-opt]').forEach(b => {
     const d = $(`.drop[data-cat="${b.dataset.opt}"]`), has = pending[b.dataset.opt].length > 0;
     if (has) d.classList.remove('hidden');
     b.classList.toggle('hidden', !d.classList.contains('hidden'));
   });
 }
-$('#optPick [data-opt]').forEach(b => b.onclick = () => { $(`.drop[data-cat="${b.dataset.opt}"]`).classList.remove('hidden'); optSync(); });
+$$('#optPick [data-opt]').forEach(b => b.onclick = () => { $(`.drop[data-cat="${b.dataset.opt}"]`).classList.remove('hidden'); optSync(); });
 function uploadFile(id, cat, file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
