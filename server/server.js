@@ -781,7 +781,7 @@ async function handle(req, res) {
     const dir = jobDir(id);
     for (const cat of C.CATEGORIES) fs.mkdirSync(path.join(dir, 'input', cat), { recursive: true });
     const audit = {};
-    for (const k of ['name', 'code', 'branch', 'objective', 'period', 'report_date', 'notes']) audit[k] = body[k] ? String(body[k]).slice(0, 2000) : (parent?.job.audit?.[k] || '');
+    for (const k of ['name', 'code', 'branch', 'objective', 'period', 'fieldwork', 'report_date', 'notes']) audit[k] = body[k] ? String(body[k]).slice(0, 2000) : (parent?.job.audit?.[k] || '');
     // Цэвэрлэх: илүү зай, хашилтын доторх зай, ганцаар үлдсэн хашилт (жишээ «“ ЭРДЭНЭТ”» → «“ЭРДЭНЭТ”»)
     for (const k of ['name', 'code', 'branch']) audit[k] = C.normTitle(audit[k]);
     audit.code = audit.code.toUpperCase();

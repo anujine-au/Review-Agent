@@ -7,7 +7,8 @@
   - code        — «Аудитын дугаар: C202603»
   - branch      — гарчгаас «<нэр> САЛБАР» (вэб тал жагсаалтаас тохирохыг сонгоно)
   - period      — «Аудит хамарсан хугацаа: 2024.04.10-2026.08.31»
-  - report_date — «Аудитыг гүйцэтгэсэн хугацаа», «Тайлангийн огноо» гэх мэт
+  - fieldwork   — «Аудитыг гүйцэтгэсэн хугацаа» (хугацаа)
+  - report_date — «Тайлангийн огноо» (нэг өдөр)
 */
 
 const { convertDocx, convertPdf } = require('./extract');
@@ -16,7 +17,8 @@ const HEAD_BLOCKS = 60;   // тайлангийн эхний хэсэг (нүү�
 const LABELS = {
   code: /аудит(ын)?\s*(дугаар|код)|тайлангийн\s*дугаар/i,
   period: /(хамарсан|хамрах|шалгасан|хамруулсан)\s*(хугацаа|үе)|аудитын\s*хугацаа|тайлант\s*хугацаа/i,
-  report_date: /(гүйцэтгэсэн|ажилласан|хийсэн)\s*хугацаа|тайлан(гийн)?\s*(огноо|гаргасан)|аудитын\s*огноо/i,
+  fieldwork: /(гүйцэтгэсэн|ажилласан|хийсэн)\s*хугацаа/i,
+  report_date: /тайлан(гийн)?\s*(огноо|гаргасан)|аудитын\s*огноо/i,
 };
 const DATE_RE = /(\d{4})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})|(\d{4})\s*оны\s*(\d{1,2})\s*(?:-?р\s*)?сарын\s*(\d{1,2})/g;
 
@@ -76,7 +78,9 @@ function detect(blocks) {
     if (!value || /^[/….\s]*$/.test(value)) continue;
     if (!out.code && LABELS.code.test(label)) { const v = clean(value).split(/\s{2,}|\t/)[0]; if (v.length <= 40) out.code = v; }
     else if (!out.period && LABELS.period.test(label)) { const v = normDates(value); if (v) out.period = v; }
-    else if (!out.report_date && LABELS.report_date.test(label)) { const v = normDates(value); if (v) out.report_date = v; }
+    else if (!out.fieldwork && LABELS.fieldwork.test(label)) { const v = normDates(value); if (v) out.fieldwork = v; }
+    // Тайлангийн огноо нэг өдөр — хугацаа бичсэн бол эхний огноог авна
+    else if (!out.report_date && LABELS.report_date.test(label)) { const v = normDates(value).split(' –')[0]; if (v) out.report_date = v; }
   }
   return out;
 }
