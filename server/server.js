@@ -785,6 +785,7 @@ async function handle(req, res) {
     // Цэвэрлэх: илүү зай, хашилтын доторх зай, ганцаар үлдсэн хашилт (жишээ «“ ЭРДЭНЭТ”» → «“ЭРДЭНЭТ”»)
     for (const k of ['name', 'code', 'branch']) audit[k] = C.normTitle(audit[k]);
     audit.code = audit.code.toUpperCase();
+    if (audit.branch === '__other') audit.branch = '';
     if (!parent && (!audit.code || !audit.branch)) { C.rmrf(jobDir(id)); return sendErr(res, 400, 'Аудитын дугаар болон салбарыг заавал бөглөнө үү'); }
     // Дахин шалгалт анхныхтай ижил далдлалттай байна (token-ууд тохирох ёстой)
     const mask = parent ? parent.job.mask !== false : body.mask !== false, sendImages = body.send_images === true; // анхдагчаар далдална, зураг илгээхгүй
