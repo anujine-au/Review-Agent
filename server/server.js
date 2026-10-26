@@ -981,7 +981,6 @@ async function handle(req, res) {
         }
         files = jobFiles(dir);
       }
-      if (!files.some(f => f.category === 'program')) return sendErr(res, 400, 'Аудитын хөтөлбөр (Excel / Word) оруулаагүй байна — заавал');
       // Төлөвийг ЭХЛЭЭД шилжүүлнэ: queued гэж тэмдэглэсний дараа хуучин (workflow-гүй) job-ийн тооцоолсон төлөв
       // аль хэдийн SUBMITTED болж «хяналтад → хяналтад» алдаа өгдөг байв (2026-10-12).
       const version = isResubmit ? (retry ? WF.versions(rootId).length : WF.versions(rootId).length + 1) : 1;
@@ -1045,7 +1044,6 @@ async function handle(req, res) {
       else copyMissingFrom(prechecksRan(g).filter(x => x !== id).pop(), dir);   // дахин шалгахад өөрчлөгдөөгүй файлыг өмнөх шалгалтаас
       const files = jobFiles(dir);
       if (!files.some(f => f.category === 'report')) return sendErr(res, 400, 'Үндсэн тайлан (report) оруулаагүй байна');
-      if (!files.some(f => f.category === 'program')) return sendErr(res, 400, 'Аудитын хөтөлбөр (Excel / Word) оруулаагүй байна — заавал');
       if (status === 'draft') try { ORIG.snapshot(dir); } catch (e) { console.error('originals snapshot:', e.message); }
       C.writeJson(path.join(dir, 'job.json'), { ...(C.readJson(path.join(dir, 'job.json')) || jobM), queued: true, files, ai_requested_by: who, ai_requested_at: C.nowIso() });
       log('PRECHECK_START', `${id} group=${g}${status !== 'draft' ? ` retry(${status})` : ''}`);

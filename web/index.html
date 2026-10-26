@@ -1176,7 +1176,7 @@ body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
         <div class="sub">Файлаа хайрцаг руу чирж оруулах, “Сонгох” дарах эсвэл “🔗 Линк”-ээр Google Drive / OneDrive линк оруулна. Линкийн эрх «Anyone with the link» байх ёстой.</div>
         <div class="drop" data-cat="report"><div class="drop-h"><div class="drop-ico">DOC</div><div><b><span id="repLabel">Аудитын тайлан</span> <span style="color:var(--crit)">*</span></b><span>.docx эсвэл .pdf — үр дүн энэ баримт дээр гарна</span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
         <div class="drop" data-cat="excel"><div class="drop-h"><div class="drop-ico">XLS</div><div><b>Excel хавсралт</b><span>.xlsx эсвэл .csv — түүвэр, жагсаалт, тооцоолол</span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
-        <div class="drop" data-cat="program"><div class="drop-h"><div class="drop-ico">ПРГ</div><div><b>Аудитын хөтөлбөр <span style="color:var(--crit)" id="progStar">*</span></b><span>.docx, .xlsx эсвэл .pdf — агент алхам бүр тайланд тусгагдсан эсэхийг шалгана</span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
+        <div class="drop" data-cat="program"><div class="drop-h"><div class="drop-ico">ПРГ</div><div><b>Аудитын хөтөлбөр</b><span>.docx, .xlsx эсвэл .pdf — агент алхам бүр тайланд тусгагдсан эсэхийг шалгана</span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
         <div class="drop" data-cat="evidence"><div class="drop-h"><div class="drop-ico">+</div><div><b>Нэмэлт нотолгоо <small style="font-weight:400;color:var(--muted)">— заавал биш</small></b><span>Журам, тушаал, тайлбар (.docx, .pdf, .txt), screenshot</span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
         <div class="drop" data-cat="followup" data-accept=".xlsx,.xlsm,.csv,.pdf"><div class="drop-h"><div class="drop-ico">FU</div><div><b>Follow-up (RPT-175) <small style="font-weight:400;color:var(--muted)">— заавал биш</small></b><span>.xlsx, .xlsm, .csv эсвэл .pdf — нэгжийн нээлттэй, давтагдсан, хугацаа хэтэрсэн зөрчлийг тулгана</span><span id="fuHint" style="color:var(--proc)"></span></div><button class="btn sm pick">Сонгох</button><button class="btn sm linkbtn" title="Google Drive, Google Docs/Sheets, OneDrive эсвэл https линкээр оруулах">🔗 Линк</button></div><div class="linkrow hidden"><input type="text" placeholder="https://drive.google.com/… эсвэл https://docs.google.com/…"><button class="btn sm primary">Нэмэх</button></div><ul class="flist"></ul></div>
       </div>
@@ -2215,13 +2215,12 @@ async function setNewMode(parentId, pcId = null) {
     $('#optMask').checked = j.mask !== false; $('#optImages').checked = !!j.send_images;
     $('#precheckBtn').disabled = !pc.left; if (!pc.left) $('#precheckBtn').title = `Өөрөө шалгах дээд тоо (${pc.max} удаа) хүрсэн`;
     $('#rcBanner').innerHTML = `<b>${esc(a.name || a.code || 'Тайлан')}</b> — та өмнө нь <b>${esc(pc.used)}</b> удаа өөрөө шалгасан (дахин шалгах боломж: <b>${esc(pc.left)}</b>). Зассан тайлангаа оруулаад <b>«🔍 Дахин шалгах»</b> эсвэл <b>«Захиралд илгээх»</b> дарна уу. Оруулаагүй файл (Excel, хөтөлбөр, тайлан) сүүлийн шалгалтынхаар автоматаар ашиглагдана. Захирал таны өөрөө шалгасан үр дүнг ч харна.`;
-    $('#teamBox').classList.remove('hidden'); $('#progStar').classList.add('hidden');   // хөтөлбөрийг өмнөх шалгалтаас авна
+    $('#teamBox').classList.remove('hidden');
     loadTeam();
     return;
   }
 
   $('#teamBox').classList.toggle('hidden', !!parentId);
-  $('#progStar').classList.toggle('hidden', !!parentId);
   if (!parentId) { loadTeam(); return; }
   $('#rcBanner').textContent = 'Ачаалж байна…';
   let j; try { j = await api(`/api/jobs/${parentId}`); } catch (e) { $('#rcBanner').textContent = 'Анхны review олдсонгүй: ' + e.message; return; }
@@ -2380,7 +2379,7 @@ async function sendNew(mode) {
     const miss = [[!$('#fCode').value.trim(), '#fCode', 'аудитын дугаар']].filter(x => x[0]);
     if (miss.length) { msg.textContent = `Заавал бөглөх талбар: ${miss.map(x => x[2]).join(', ')}.`; msg.className = 'msg bad'; $(miss[0][1]).focus(); return; }
   }
-  if (!recheckParent && !pcFrom && !pending.program.length) { msg.textContent = 'Аудитын хөтөлбөрийг заавал оруулна уу («Аудитын хөтөлбөр *» хайрцаг).'; msg.className = 'msg bad'; $('.drop[data-cat="program"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  // Хөтөлбөр заавал биш (2026-10-26) — оруулаагүй бол AI G0-03 / M02 PARTIAL гэж тэмдэглэнэ
 
   for (const [sel, label] of [['#fPeriod', 'Аудитын хугацааны'], ['#fDate', 'Тайлангийн огнооны']]) {
     const pd = parseDates($(sel).value);

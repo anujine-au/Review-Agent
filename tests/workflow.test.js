@@ -225,13 +225,13 @@ test('11. Хуучин job (workflow талбаргүй) алдаагүй нээ
 });
 
 test('12. Шинэ хүсэлт (workflow-гүй ноорог) ахлах аудитор илгээхэд SUBMITTED болно — «хяналтад → хяналтад» алдаагүй', async () => {
-  const c = await call(tokens.lead1, 'POST', '/api/jobs', { code: 'T-NEW', branch: 'Эрдэнэт', name: 'Шинэ тайлан', team: ['aud1'] });
+  // салбар, хөтөлбөр заавал биш (2026-10-26) — дугаар л заавал
+  assert.equal((await call(tokens.lead1, 'POST', '/api/jobs', { branch: 'Эрдэнэт', name: 'Шинэ тайлан' })).status, 400, 'дугааргүй үүссэн');
+  const c = await call(tokens.lead1, 'POST', '/api/jobs', { code: 'T-NEW', name: 'Шинэ тайлан', team: ['aud1'] });
   assert.equal(c.status, 201, String(c.buf));
   const id = c.json.id;
   const f = Buffer.concat([Buffer.from('504B0304', 'hex'), Buffer.from('new report')]);
   assert.equal((await call(tokens.lead1, 'PUT', `/api/jobs/${id}/files?cat=report&name=R.docx`, f, true)).status, 201);
-  assert.equal((await call(tokens.lead1, 'POST', `/api/jobs/${id}/start`, {})).status, 400, 'хөтөлбөргүй илгээгдсэн');
-  assert.equal((await call(tokens.lead1, 'PUT', `/api/jobs/${id}/files?cat=program&name=P.docx`, f, true)).status, 201);
   const st = await call(tokens.lead1, 'POST', `/api/jobs/${id}/start`, {});
   assert.equal(st.status, 200, String(st.buf));
   const j = await call(tokens.lead1, 'GET', `/api/jobs/${id}`);
@@ -358,8 +358,6 @@ test('19. Өөрөө шалгах: файл оруулаад AI шууд дар�
   assert.equal(c.status, 201, String(c.buf));
   const id = c.json.id, f = Buffer.concat([Buffer.from('504B0304', 'hex'), Buffer.from('pc')]);
   await call(tokens.aud1, 'PUT', `/api/jobs/${id}/files?cat=report&name=R.docx`, f, true);
-  assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/precheck`, {})).status, 400, 'хөтөлбөргүй эхэлсэн');
-  await call(tokens.aud1, 'PUT', `/api/jobs/${id}/files?cat=program&name=P.docx`, f, true);
   assert.equal((await call(tokens.aud1, 'POST', `/api/jobs/${id}/precheck`, {})).status, 200);
   let st; for (let i = 0; i < 100; i++) { st = (await call(tokens.aud1, 'GET', `/api/jobs/${id}`)).json.status; if (['failed', 'done'].includes(st)) break; await new Promise(r => setTimeout(r, 200)); }
   assert.equal(st, 'failed');   // claude олдохгүй
