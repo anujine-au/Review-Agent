@@ -786,7 +786,8 @@ async function handle(req, res) {
     for (const k of ['name', 'code', 'branch']) audit[k] = C.normTitle(audit[k]);
     audit.code = audit.code.toUpperCase();
     if (audit.branch === '__other') audit.branch = '';
-    if (!parent && (!audit.code || !audit.branch)) { C.rmrf(jobDir(id)); return sendErr(res, 400, 'Аудитын дугаар болон салбарыг заавал бөглөнө үү'); }
+    // Салбар заавал биш (бүх салбарыг хамарсан аудит, 2026-10-26)
+    if (!parent && !audit.code) { C.rmrf(jobDir(id)); return sendErr(res, 400, 'Аудитын дугаарыг заавал бөглөнө үү'); }
     // Дахин шалгалт анхныхтай ижил далдлалттай байна (token-ууд тохирох ёстой)
     const mask = parent ? parent.job.mask !== false : body.mask !== false, sendImages = body.send_images === true; // анхдагчаар далдална, зураг илгээхгүй
     // Баг (зөвхөн анхны хүсэлтэд): аудитор / ахлах аудитор role-той идэвхтэй хэрэглэгчид

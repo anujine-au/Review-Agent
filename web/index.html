@@ -1137,12 +1137,12 @@ body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
 
       <div class="card step">
         <h3><span class="n">1</span>Аудитын мэдээлэл</h3>
-        <div class="sub">Тайлангаа (2-р алхам) оруулахад нэр, дугаар, салбар, хугацааг тайлангаас автоматаар бөглөнө. Дугаар, салбар (*) заавал — бүх салбарыг хамарсан аудит бол «Бүх салбар» эсвэл «Бусад — гараар бичих»-ийг сонгоно.</div>
+        <div class="sub">Тайлангаа (2-р алхам) оруулахад нэр, дугаар, салбар, хугацааг тайлангаас автоматаар бөглөнө. Аудитын дугаар (*) заавал; бусдыг хоосон орхиж болно.</div>
         <div id="metaMsg" class="msg hidden"></div>
         <div class="grid3">
           <div><label class="f" for="fName">Аудитын нэр</label><input id="fName" type="text" placeholder="Зээлийн процессын аудит"></div>
           <div><label class="f" for="fCode">Аудитын дугаар <span style="color:var(--crit)" aria-hidden="true">*</span></label><input id="fCode" type="text" placeholder="IA-2026-014" required aria-required="true"></div>
-          <div><label class="f" for="fBranch">Салбар <span style="color:var(--crit)" aria-hidden="true">*</span></label><select id="fBranch" required aria-required="true">
+          <div><label class="f" for="fBranch">Салбар</label><select id="fBranch">
             <option value="">— Салбар сонгох —</option>
             <option>Уламжлалт төлүүлэлтийн салбар</option>
             <option>Дижитал төлүүлэлтийн салбар</option>
@@ -2075,7 +2075,7 @@ async function fuHint() {
       : ` · Төвийн RPT-175-д «${b}»-ийн зөвлөмж алга`;
   } catch (e) { el.textContent = ''; }
 }
-// Давхар барьцаа гэх мэт бүх салбарыг хамарсан аудит жагсаалтын салбарт тохирохгүй — «Бусад»-аар гараар бичнэ (заавал хэвээр)
+// Давхар барьцаа гэх мэт бүх салбарыг хамарсан аудит жагсаалтын салбарт тохирохгүй — «Бүх салбар», «Бусад»-аар гараар бичих эсвэл хоосон орхино
 const branchVal = () => $('#fBranch').value === '__other' ? $('#fBranchOther').value.trim() : $('#fBranch').value.trim();
 function branchOtherToggle() {
   const on = $('#fBranch').value === '__other';
@@ -2375,9 +2375,9 @@ async function sendNew(mode) {
       : 'Аудитын тайлан хэсэгт файл алга — эхний «Аудитын тайлан *» хайрцагт файлаа чирж оруулах, «Сонгох» дарах, эсвэл линкээ бичээд «Нэмэх» дарна уу.';
     msg.className = 'msg bad'; $('.drop[data-cat="report"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
   }
-  // Аудитын дугаар, салбар заавал (давталтуудыг бүлэглэхэд хэрэглэнэ); засварласан хувилбарт анхныхаас өвлөнө
+  // Аудитын дугаар заавал (давталтуудыг бүлэглэхэд хэрэглэнэ); салбар заавал биш (2026-10-26 хэрэглэгчийн шийдвэр). Засварласан хувилбарт анхныхаас өвлөнө
   if (!recheckParent) {
-    const miss = [[!$('#fCode').value.trim(), '#fCode', 'аудитын дугаар'], [!branchVal(), $('#fBranch').value === '__other' ? '#fBranchOther' : '#fBranch', 'салбар']].filter(x => x[0]);
+    const miss = [[!$('#fCode').value.trim(), '#fCode', 'аудитын дугаар']].filter(x => x[0]);
     if (miss.length) { msg.textContent = `Заавал бөглөх талбар: ${miss.map(x => x[2]).join(', ')}.`; msg.className = 'msg bad'; $(miss[0][1]).focus(); return; }
   }
   if (!recheckParent && !pcFrom && !pending.program.length) { msg.textContent = 'Аудитын хөтөлбөрийг заавал оруулна уу («Аудитын хөтөлбөр *» хайрцаг).'; msg.className = 'msg bad'; $('.drop[data-cat="program"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
