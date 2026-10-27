@@ -989,6 +989,67 @@ body { font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; }
 .toc-leg .dot.R1 { background: var(--crit); } .toc-leg .dot.R2 { background: var(--major); } .toc-leg .dot.R3 { background: var(--minor); }
 @media (max-width: 1000px) { .row { grid-template-columns: minmax(0, 1fr); } }
 .row > *, .doc > * { min-width: 0; }
+
+/* 2026-10-27 аудиторын UX: зэрэглэл = өнгө + R шошго + хэлбэр (өнгөнд л найдахгүй) */
+.sev { font-size: 11.5px; padding: 2px 8px; }
+.sev::before, .rsev::before, .sevk::before { margin-right: 4px; font-size: .85em; }
+.sev.R1::before, .rsev.R1::before, .sevk.R1::before { content: '▲'; }
+.sev.R2::before, .rsev.R2::before, .sevk.R2::before { content: '◆'; }
+.sev.R3::before, .rsev.R3::before, .sevk.R3::before { content: '●'; }
+.sev.R4::before, .rsev.R4::before, .sevk.R4::before { content: '○'; }
+mark.R1 { box-shadow: inset 0 -2px 0 var(--crit); }
+mark.R2 { text-decoration: underline dashed var(--major); text-underline-offset: 3px; }
+mark.R3 { text-decoration: underline dotted var(--minor); text-underline-offset: 3px; }
+/* Типографи: догол мөр энгийн жинтэй, гарчгаас ялгаатай; P#/T# бүдэг, жижиг */
+.row .para { font-size: 16px; line-height: 1.65; font-weight: 400; }
+.row .para .pid { font-size: 11px; opacity: 1; color: var(--muted); }
+.para.k-title { font-size: 22px; font-weight: 700; padding-top: 26px; }
+.para.k-h1 { font-size: 19px; font-weight: 700; padding-top: 24px; }
+.para.k-h2 { font-size: 17px; font-weight: 700; padding-top: 20px; }
+.para.k-h3 { font-size: 16px; font-weight: 700; padding-top: 16px; }
+.para.k-p { font-size: 16px; font-weight: 400; }
+@media (max-width: 1500px) { .row .para, .para.k-p { font-size: 15px; } .row { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); } }
+@media (min-width: 1600px) { .row { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); } }
+/* Санал ↔ тайлан: урт талын хажууд богино тал нь харагдсан хэвээр (sticky); толгойн доор гүйлгэнэ */
+.row .para, .row .side { position: sticky; top: 76px; }
+.row, .cmt, .general { scroll-margin-top: 84px; }
+.toc { top: 76px; max-height: calc(100vh - 88px); }
+.rsev { position: absolute; left: 6px; top: 38px; font: 700 10.5px/1 "Segoe UI", sans-serif; padding: 3px 4px; border-radius: 5px; border: 0; cursor: pointer; white-space: nowrap; }
+.rsev::before { margin-right: 1px; }
+.rsev.R1 { background: var(--crit-bg); color: var(--crit); } .rsev.R2 { background: var(--major-bg); color: var(--major); } .rsev.R3 { background: var(--minor-bg); color: var(--minor); } .rsev.R4 { background: var(--sug-bg); color: var(--sug); } .rsev.OK { background: var(--ok-bg); color: var(--ok); }
+.rsev:focus-visible, .cmt-loc:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cmt-loc { font: 600 11px/1.6 Consolas, monospace; color: var(--accent); background: var(--accent-2); border: 0; border-radius: 5px; padding: 0 6px; cursor: pointer; }
+.cmt-loc:hover { text-decoration: underline; }
+.toc-leg .dot { display: none; }
+.sevk { font-weight: 600; }
+.sevk.R1 { color: var(--crit); } .sevk.R2 { color: var(--major); } .sevk.R3 { color: var(--minor); } .sevk.R4 { color: var(--sug); }
+/* Толгой: гарчиг давамгай, стандарт нь хоёрдогч холбоос */
+.topnav a { font-size: 13px; font-weight: 400; color: var(--muted); }
+.jh-meta { display: flex; flex-wrap: wrap; gap: 6px 28px; padding: 0; background: none; border: 0; box-shadow: none; }
+.jh-meta div { display: flex; gap: 6px; align-items: baseline; }
+.jh-meta span { display: inline; font-size: 12.5px; }
+.jh-meta b { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.job-head h1.page { margin-bottom: 8px; }
+/* Шийдвэрийн самбар (өөрөө шалгах) */
+.decbar { padding: 18px 20px; margin: 0 0 16px; border-left: 5px solid var(--border-strong); display: grid; gap: 12px; }
+.decbar.fail, .decbar.esc { border-left-color: var(--crit); } .decbar.rev { border-left-color: var(--major); } .decbar.pass, .decbar.okst { border-left-color: var(--ok); } .decbar.run { border-left-color: var(--accent); } .decbar.err { border-left-color: var(--crit); background: var(--crit-bg); }
+.decbar-top { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; }
+.decbar-cnt { display: flex; gap: 6px; flex-wrap: wrap; }
+.decbar-cnt .scnt { display: inline-flex; gap: 6px; align-items: baseline; }
+.decbar-next { font-size: 16px; font-weight: 600; color: var(--text); margin: 0; }
+.decbar-next small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.decbar-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.decbar-acts .btn { padding: 9px 16px; }
+.decbar-acts .why { font-size: 12.5px; color: var(--muted); }
+.decbar .series { font-size: 12.5px; color: var(--muted); }
+.r1confirm { border: 1px solid var(--crit); background: var(--crit-bg); color: var(--text); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; }
+.r1confirm b.n { color: var(--crit); }
+.r1confirm .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.empty-ok { text-align: center; padding: 36px 20px; color: var(--ok); background: var(--ok-bg); border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--border)); border-radius: var(--radius); }
+.empty-ok b { display: block; font-size: 16px; margin-bottom: 4px; }
+.qwait { font-size: 13.5px; color: var(--text-2); background: var(--accent-2); border-radius: 8px; padding: 8px 12px; margin: 4px 0 12px; }
+.fbsev { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; margin-top: 6px; }
+@media print { .row .para, .row .side { position: static; } .rsev, .cmt-loc { display: none; } }
 </style>
 </head>
 <body>
@@ -2203,9 +2264,10 @@ $$('.drop').forEach(d => {
 // Засварласан хувилбар оруулах горим (#recheck/<id>): анхны review-ийн мэдээллийг бөглөж, нууцлалын тохиргоог анхных шиг хадгална
 let recheckParent = null;
 // Өөрөө шалгасан тайлангаас үргэлжлүүлэх (#new/pc/<id>): засаад дахин шалгах эсвэл захиралд илгээх
-let pcFrom = null;
+let pcFrom = null, pcR1 = 0, pcIntent = null, pcAck = null;   // pcR1: сүүлийн өөрөө шалгалтын R1; pcIntent: send | recheck; pcAck: R1-тэй илгээхийг баталсан job
 async function setNewMode(parentId, pcId = null) {
-  recheckParent = parentId; pcFrom = parentId ? null : pcId;
+  recheckParent = parentId; pcFrom = parentId ? null : pcId; pcR1 = 0;
+  $('#submitBtn').classList.add('primary'); $('#precheckBtn').classList.remove('primary');
   $('#rcBanner').classList.toggle('hidden', !parentId && !pcFrom);
   $('#precheckBtn').classList.toggle('hidden', !!parentId); $('#pcNote').classList.toggle('hidden', !!parentId);
   $('#newTitle').textContent = parentId ? 'Засварласан хувилбар оруулах' : pcFrom ? 'Зассан тайлангаа оруулах' : 'Шинэ review';
@@ -2223,6 +2285,10 @@ async function setNewMode(parentId, pcId = null) {
     if (a.branch && !$('#fBranch').value) { if (![...$('#fBranch').options].some(o => o.value === a.branch)) $('#fBranch').add(new Option(a.branch, a.branch)); $('#fBranch').value = a.branch; }
     $('#optMask').checked = j.mask !== false; $('#optImages').checked = !!j.send_images;
     $('#precheckBtn').disabled = !pc.left; if (!pc.left) $('#precheckBtn').title = `Өөрөө шалгах дээд тоо (${pc.max} удаа) хүрсэн`;
+    pcR1 = hasCounts(j) ? sevVec(j)[0] : 0;
+    // Шийдвэрийн самбарт дарсан товчтой ижил товч маягт дээр үндсэн болно
+    const re = pcIntent === 'recheck' && pc.left;
+    $('#precheckBtn').classList.toggle('primary', !!re); $('#submitBtn').classList.toggle('primary', !re);
     $('#rcBanner').innerHTML = `<b>${esc(a.name || a.code || 'Тайлан')}</b> — та өмнө нь <b>${esc(pc.used)}</b> удаа өөрөө шалгасан (дахин шалгах боломж: <b>${esc(pc.left)}</b>). Зассан тайлангаа оруулаад <b>«1. Agent-ээр дахин хянуулах»</b> эсвэл <b>«2. Захирлаар хянуулах»</b> дарна уу. Оруулаагүй файл (Excel, хөтөлбөр, тайлан) сүүлийн шалгалтынхаар автоматаар ашиглагдана. Захирал таны өөрөө шалгасан үр дүнг ч харна.`;
     $('#teamBox').classList.remove('hidden');
     loadTeam();
@@ -2393,6 +2459,14 @@ async function sendNew(mode) {
       : 'Аудитын тайлан хэсэгт файл алга — эхний «Аудитын тайлан *» хайрцагт файлаа чирж оруулах, «Сонгох» дарах, эсвэл линкээ бичээд «Нэмэх» дарна уу.';
     msg.className = 'msg bad'; $('.drop[data-cat="report"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
   }
+  if (!isPc && pcFrom && pcR1 > 0 && pcAck !== pcFrom) {
+    msg.className = 'msg';
+    msg.innerHTML = `<div class="r1confirm" role="alertdialog" style="text-align:left"><div>⚠ Сүүлийн өөрөө шалгалтаар <b class="n">${pcR1} ноцтой (R1)</b> санал илэрсэн.${pending.report.length ? ' Шинээр оруулсан тайланд засагдсан эсэхийг AI шалгаагүй.' : ' Зассан тайлан оруулаагүй байна.'} Захирал R1 засагдахаас өмнө батлахгүй.</div>
+      <div class="acts" style="justify-content:flex-end">${!$('#precheckBtn').disabled && pending.report.length ? '<button class="btn primary" type="button" data-r1re>Эхлээд дахин шалгах</button>' : ''}<button class="btn" type="button" data-r1go>Тийм, захиралд илгээх</button></div></div>`;
+    msg.querySelector('[data-r1go]').onclick = () => { pcAck = pcFrom; msg.innerHTML = ''; sendNew('submit'); };
+    const rr = msg.querySelector('[data-r1re]'); if (rr) rr.onclick = () => { msg.innerHTML = ''; sendNew('precheck'); };
+    return;
+  }
   // Аудитын дугаар заавал (давталтуудыг бүлэглэхэд хэрэглэнэ); салбар заавал биш (2026-10-26 хэрэглэгчийн шийдвэр). Засварласан хувилбарт анхныхаас өвлөнө
   if (!recheckParent) {
     const miss = [[!$('#fCode').value.trim(), '#fCode', 'аудитын дугаар']].filter(x => x[0]);
@@ -2481,7 +2555,7 @@ function md(src) {
 
 /* ---------- job ---------- */
 async function openJob(id) {
-  if (!current || current.id !== id) { current = { id }; activeTab = 'doc'; docFilter = 'ALL'; modFilter = null; onlyCommented = true; openIds = new Set(); expandAll = false; openActs = new Set(); openGaps = new Set(); $('#vJob').innerHTML = '<div class="empty">Ачаалж байна…</div>'; }
+  if (!current || current.id !== id) { current = { id }; activeTab = 'doc'; docFilter = 'ALL'; modFilter = null; onlyCommented = true; openIds = new Set(); closedIds = new Set(); expandAll = false; current.pcConfirm = false; openActs = new Set(); openGaps = new Set(); $('#vJob').innerHTML = '<div class="empty">Ачаалж байна…</div>'; }
   await refreshJob(id);
 }
 
@@ -2597,10 +2671,11 @@ function renderProgress(j) {
   const started = j.started ? new Date(j.started) : null;
   const mins = started ? Math.max(0, Math.round((Date.now() - started.getTime()) / 60000)) : 0;
   return `<div class="card pad">
-    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:16px">Review хийгдэж байна</b><span class="sub">${started ? `${mins} минут өнгөрсөн · ` : ''}энэ хуудсыг хааж болно, дуусахад энд харагдана</span></div>
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:16px">${j.status === 'queued' ? 'Дараалалд хүлээж байна' : 'AI шалгаж байна'}</b><span class="sub">${started ? `${mins} минут өнгөрсөн · ` : ''}ихэвчлэн ~10 минут · энэ хуудсыг хааж болно, дуусахад энд харагдана</span></div>
+    ${j.status === 'queued' ? '<div class="qwait">⏳ Өөр тайлан AI-аар шалгагдаж байна. Тэр дуусмагц таны тайлан автоматаар эхэлнэ — юу ч дарах шаардлагагүй.</div>' : ''}
     <div class="stepper">${steps.map((s, i) => `<div class="${i < stage ? 'done' : i === stage ? 'cur' : ''}">${s}</div>`).join('')}</div>
     ${progressInfo(j)}
-    <details class="more" open><summary>Дэлгэрэнгүй явц</summary>${renderLog(j, false)}</details>
+    <details class="more"><summary>Дэлгэрэнгүй явц</summary>${renderLog(j, false)}</details>
   </div>`;
 }
 
@@ -2681,7 +2756,7 @@ function renderResult(j) {
   const counts = SEVS.map(s => `<button class="scnt ${SEV_CNT[s]}" data-filter="${s}" title="${SEV_HINT[s]} — дарж шүүх"><b>${cnt(s)}</b> ${SEV_LONG[s]}</button>`).join('');
   let html = `
   <div class="card sumcard ${dc}">
-    <div class="sum-top"><span class="vpill ${dc}"><span aria-hidden="true">${icon}</span> ${esc(vd ? VERDICT_MN[vd] : decMn(r.decision || j.decision))}</span><div class="sum-counts">${counts}</div></div>
+    ${j.precheck && j.can?.precheck ? '' : `<div class="sum-top"><span class="vpill ${dc}"><span aria-hidden="true">${icon}</span> ${esc(vd ? VERDICT_MN[vd] : decMn(r.decision || j.decision))}</span><div class="sum-counts">${counts}</div></div>`}
     <div class="sum-head">${esc(plain(headlineOf(f)))}</div>
     ${escs.length ? `<details class="sum-sec warn"><summary>⚠ Яаралтай мэдэгдэх шаардлага — ${escs.length}</summary><ul>${escs.map(e => `<li><b>${esc(ESC_MN[e.type] || e.type)}</b>${e.requirement ? ' — ' + esc(plain(e.requirement)) : ''}${e.deadline ? ` · хугацаа: <b>${esc(e.deadline)}</b>` : ''}${e.status_in_report ? ` · тайланд: ${esc(e.status_in_report)}` : ''}</li>`).join('')}</ul></details>` : ''}
     ${dpts.length ? `<details class="sum-sec"><summary>Захирлын шийдэх асуудал — ${dpts.length}</summary><ul>${dpts.map(x => `<li>${esc(plain(x))}</li>`).join('')}</ul></details>` : ''}
@@ -2972,7 +3047,10 @@ function fbProgressHtml(fb) {
   if (!total) return '';
   const msg = pct === 100 ? '🎉 Бүх саналыг зассан байна! Одоо «Засвар оруулах» дарж илгээнэ үү.'
     : pct >= 50 ? 'Хагасаас илүүг нь зассан — бага үлдлээ 💪' : done ? 'Сайн эхэллээ — үргэлжлүүлээрэй.' : 'Зассан саналаа «Зассан» гэж тэмдэглээрэй — явц энд харагдана.';
+  const pr = fb.progress || {};
+  const bySev = SEVS.map(sv => { const xs = fb.items.filter(x => sevOf(x.severity, 3) === sv); return xs.length ? `<span class="sevk ${sv}">${sv} ${SEV_LONG[sv]} ${xs.filter(x => pr[x.id]?.done).length}/${xs.length}</span>` : ''; }).filter(Boolean).join('');
   return `<div class="fbprog"><div class="lbl"><b>${pct}%</b><span>${done} / ${total} санал зассан</span>${r1 ? `<span class="st bad">Ноцтой ${r1} үлдсэн</span>` : ''}<span class="sub">${msg}</span></div>
+    <div class="fbsev">${bySev}</div>
     <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div></div>`;
 }
 // Хураасан мөрөн дээрх жижиг дугуй тэмдэг (дэлгэхгүйгээр тэмдэглэнэ)
@@ -3103,11 +3181,16 @@ function renderRestricted() {
     RETURNED: 'Захирал санал буцаалаа. Доорх саналын дагуу тайлангаа засаад «Засвар оруулах» дарна уу.',
     APPROVED_FINAL: `Тайлан эцэслэн батлагдсан${j.finalized ? ` — ${j.finalized.reg_no}` : ''}.`, CANCELLED: 'Хяналт цуцлагдсан.',
   }[w.state] || '';
-  let html = `<div class="job-head"><button class="btn ghost sm back" data-go="list">←</button>
-    <div style="flex:1;min-width:240px"><div class="eyebrow">${esc(a.code || '')}</div><h1 class="page">${esc(a.name || a.code || 'Тайлан')}</h1>
-      <div class="meta">${[a.code, a.branch].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join('')}<span>${esc(fmtDate(j.created))}</span></div></div>
-    <div class="acts">${canDel(j) ? `<button class="btn sm danger" id="delBtn">🗑 Устгах</button>` : ''}${w.state === 'RETURNED' && j.can?.resubmit ? `<button class="btn primary" data-wf="resubmit">Засвар оруулах</button>` : ''}</div></div>
-    <div class="wfbar">${wfBadge(w, true)}<span>${esc(msg)}</span></div>`;
+  // Толгой нь захирлын харагдацтай ижил: гарчиг давамгай, мета нэг мөрөнд, үйлдэл баруун дээд талд
+  let html = `<div class="job-head">
+    <div class="jh-top"><button class="backlink" data-go="list">‹ Бүх тайлан руу буцах</button><span class="spacer"></span>
+      <div class="acts">${canDel(j) ? `<button class="btn sm danger" id="delBtn">🗑 Устгах</button>` : ''}${w.state === 'RETURNED' && j.can?.resubmit ? `<button class="btn primary" data-wf="resubmit">Засвар оруулах →</button>` : ''}</div></div>
+    <div class="jh-tags">${a.code ? `<span class="jh-code">${esc(a.code)}</span>` : ''}</div>
+    <h1 class="page">${esc(a.name || a.code || 'Тайлан')}</h1>
+    <div class="jh-meta">${a.branch ? `<div><span>Салбар</span><b>${esc(a.branch)}</b></div>` : ''}<div><span>Илгээсэн огноо</span><b>${esc(fmtDate(j.created))}</b></div></div></div>
+    <div class="wfbar">${wfBadge(w, true)}<span>${esc(msg)}</span></div>
+    ${current.resubConfirm ? `<div class="r1confirm" role="alertdialog" style="margin-bottom:12px"><div>⚠ <b class="n">${current.resubConfirm} ноцтой (R1)</b> санал «Зассан» гэж тэмдэглэгдээгүй байна. Захирал R1 засагдахаас өмнө батлахгүй.</div>
+      <div class="acts"><button class="btn primary" data-wf="resubno">Буцаж засах</button><button class="btn" data-wf="resubok">Тийм, засвар оруулах</button></div></div>` : ''}`;
   if (justSent && (justSent.id === current.id || justSent.root === current.id) && Date.now() - justSent.at < 120000) {
     html += `<div class="okbanner">✓ Амжилттай илгээлээ. Захирал хянаж дуустал төлөв «Хянагдаж байна» байна.</div>`;
   }
@@ -3124,19 +3207,42 @@ function renderRestricted() {
 function precheckBar(j) {
   const pc = j.precheck || {}, mine = !!j.can?.precheck;
   const failed = ['failed', 'cancelled'].includes(j.status);
-  let text, acts = '';
-  if (pc.submitted_as) text = `✓ Энэ шалгалтын дараа тайланг захиралд илгээсэн. <a href="#job/${esc(pc.submitted_as)}">Илгээсэн тайланг нээх →</a>`;
-  else if (!mine) text = 'Аудиторын өөрөө шалгасан тайлан — захиралд хараахан илгээгээгүй. Аудитор засаад илгээхэд энэ үр дүн тайлан дээр нь харагдана.';
-  else if (j.status === 'done') {
-    text = `<b>Энэ бол таны өөрийн шалгалт — захиралд хараахан илгээгдээгүй.</b> Доорх засах зүйлсийг тайландаа (Word дээр) засаад, зассан тайлангаа оруулж дахин шалгах эсвэл захиралд илгээнэ үү. Захирал энэ үр дүнг ч харна.`;
-    acts = `<button class="btn" data-pcgo="${esc(j.id)}" ${pc.left ? '' : 'disabled'} title="${pc.left ? `Дахин ${pc.left} удаа шалгах боломжтой` : `Дээд тоо (${pc.max} удаа) хүрсэн`}">🔍 Засаад дахин шалгах (${esc(pc.left)} үлдсэн)</button>
-      <button class="btn primary" data-pcgo="${esc(j.id)}">📤 Захиралд илгээх →</button>`;
-  } else if (failed) {
-    text = 'AI шалгалт тасарлаа — дахин эхлүүлнэ үү.';
-    acts = `<button class="btn primary" data-pcretry="${esc(j.id)}">↻ Дахин эхлүүлэх</button>`;
-  } else text = 'AI таны тайланг шалгаж байна — дуусахад 🔔 мэдэгдэл ирнэ. Энэ хуудсыг хааж болно.';
-  const series = (pc.series || []).length > 1 ? `<div class="sub" style="margin-top:8px">Шалгалтууд: ${pc.series.map((x, i) => x.id === j.id ? `<b>${i + 1}-р (энэ)</b>` : `<a href="#job/${esc(x.id)}">${i + 1}-р · ${esc(fmtDate(x.created))}</a>`).join(' · ')}</div>` : '';
-  return `<div class="card wfbar"><div class="wfsteps"><span>${text}</span></div>${acts ? `<div class="wfacts">${acts}</div>` : ''}${series}</div>`;
+  const series = (pc.series || []).length > 1 ? `<div class="series">Шалгалтууд: ${pc.series.map((x, i) => x.id === j.id ? `<b>${i + 1}-р (энэ)</b>` : `<a href="#job/${esc(x.id)}">${i + 1}-р · ${esc(fmtDate(x.created))}</a>`).join(' · ')}</div>` : '';
+  const bar = (cls, body) => `<div class="card decbar ${cls}">${body}${series}</div>`;
+  if (pc.submitted_as) return bar('pass', `<p class="decbar-next">✓ Энэ шалгалтын дараа тайланг захиралд илгээсэн. <a href="#job/${esc(pc.submitted_as)}">Илгээсэн тайланг нээх →</a></p>`);
+  if (!mine) return bar('', `<p class="decbar-next">Аудиторын өөрөө шалгасан тайлан<small>Захиралд хараахан илгээгээгүй. Аудитор засаад илгээхэд энэ үр дүн тайлан дээр нь харагдана.</small></p>`);
+  if (failed) return bar('err', `<p class="decbar-next">✕ AI шалгалт ${j.status === 'cancelled' ? 'зогсоогдсон' : 'алдаатай дууслаа'}<small>Доорх алдааны мэдээллийг харна уу. Тайлан, файл тань хадгалагдсан — дахин эхлүүлж болно.</small></p>
+    <div class="decbar-acts"><button class="btn primary" data-pcretry="${esc(j.id)}">↻ Дахин эхлүүлэх</button></div>`);
+  if (ACTIVE.includes(j.status)) return series ? `<div class="card decbar run">${series}</div>` : '';   // явцын карт (renderProgress) дараалал, хугацааг харуулна
+  if (j.status !== 'done') return bar('run', `<p class="decbar-next">⏳ AI шалгалт эхлэхийг хүлээж байна<small>Дуусахад 🔔 мэдэгдэл ирнэ — энэ хуудсыг хааж болно.</small></p>`);
+  // Дууссан: юуг эхэлж засах, verdict-ээс хамаарсан үндсэн товч
+  const issues = current.findings ? getIssues() : [];
+  const cnt = s => issues.filter(x => x.severity === s).length;
+  const r1 = issues.filter(x => x.severity === 'R1');
+  const vd = j.verdict || verdictOf(current.findings?.review || {}, j.decision);
+  const dc = VERDICT_CLS[vd] || '';
+  const left = Number(pc.left) || 0;
+  const fixFirst = left > 0 && (['NOT_READY', 'READY_WITH_FIXES'].includes(vd) || (!VERDICT_MN[vd] && r1.length > 0));
+  const icon = dc === 'esc' ? '‼' : dc === 'fail' ? '✕' : dc === 'rev' ? '!' : dc === 'pass' ? '✓' : '•';
+  const counts = SEVS.filter(s => cnt(s)).map(s => `<button class="scnt ${SEV_CNT[s]}" data-filter="${s}" title="${SEV_HINT[s]} — дарж шүүх"><span class="sevk ${s}">${s}</span> ${SEV_LONG[s]} <b>${cnt(s)}</b></button>`).join('');
+  const next = vd === 'ESCALATE'
+    ? `‼ Захиралд нэн даруй мэдэгдэх шаардлагатай<small>Энэ нь аудиторын засвараар шийдэгдэх асуудал биш — тайлангаа захиралд илгээнэ үү.${r1.length ? ` Мөн ${r1.length} ноцтой (R1) санал байна.` : ''}</small>`
+    : !issues.length
+    ? `✓ Засах санал олдсонгүй<small>Тайлан захиралд илгээхэд бэлэн байна.</small>`
+    : r1.length
+      ? `Эхлээд ${r1.length} ноцтой (R1) саналыг засна уу<small>R1 засагдахаас өмнө захирал батлахгүй. Доор тайлан дээр нээлттэй харагдана — 📍 дарж мөр рүү очно.</small>`
+      : cnt('R2')
+        ? `Ноцтой санал алга — ${cnt('R2')} томоохон (R2) саналыг хянана уу<small>R2-ыг захирал шийдвэрлэнэ; засах боломжтойг нь засаад илгээх нь зүйтэй.</small>`
+        : `Ноцтой, томоохон санал алга<small>Үлдсэн нь найруулга, форматын санал — засаад эсвэл шууд илгээж болно.</small>`;
+  const reBtn = `<button class="btn${fixFirst ? ' primary' : ''}" data-pcgo="${esc(j.id)}" data-intent="recheck" ${left ? '' : 'disabled'} title="${left ? `Зассан тайлангаа оруулж дахин шалгуулна (${left} удаа үлдсэн)` : `Дээд тоо (${esc(pc.max)} удаа) хүрсэн`}">🔍 Засаад дахин шалгах · ${left} үлдсэн</button>`;
+  const sendBtn = `<button class="btn${fixFirst ? '' : ' primary'}" data-pcsend="${esc(j.id)}">📤 Захиралд илгээх →</button>`;
+  const why = !left ? `<span class="why">Өөрөө шалгах ${esc(pc.max || pc.used || '')}/${esc(pc.max || pc.used || '')} удаа ашигласан — засаад захиралд илгээнэ.</span>`
+    : vd === 'ESCALATE' ? '<span class="why">Захиралд нэн даруй мэдэгдэх шаардлагатай — шууд илгээнэ үү.</span>' : '';
+  const confirmBox = current.pcConfirm && r1.length ? `<div class="r1confirm" role="alertdialog" aria-labelledby="r1cT"><div id="r1cT">⚠ <b class="n">${r1.length} ноцтой (R1)</b> санал энэ шалгалтаар (${esc(pc.n || 1)}-р) илэрсэн бөгөөд засагдсан эсэх нь шалгагдаагүй байна. Захирал R1 засагдахаас өмнө батлахгүй тул тайлан танд буцаж ирэх магадлалтай.</div>
+    <div class="acts"><button class="btn primary" data-pcno>Буцаж засах</button><button class="btn" data-pcgo="${esc(j.id)}" data-intent="send" data-ack="1">Тийм, захиралд илгээх</button></div></div>` : '';
+  return bar(issues.length ? dc : 'okst', `<div class="decbar-top"><span class="vpill ${dc}"><span aria-hidden="true">${icon}</span> ${esc(VERDICT_MN[vd] || 'Шалгалт дууссан')}</span><div class="decbar-cnt">${counts}</div></div>
+    <p class="decbar-next">${next}</p>
+    ${confirmBox || `<div class="decbar-acts">${fixFirst ? reBtn + sendBtn : sendBtn + reBtn}${r1.length ? `<button class="btn ghost sm" data-goissue="${esc(r1[0].id)}">Эхний R1 рүү очих ↓</button>` : ''}${why}</div>`}`);
 }
 // Илгээсэн тайлан дээр: аудитор илгээхээсээ өмнө өөрөө шалгасан түүх (захирал, баг харна)
 function prechecksStrip(j) {
@@ -3147,7 +3253,14 @@ function prechecksStrip(j) {
       <a href="#job/${esc(x.id)}">${i + 1}-р шалгалт · ${esc(fmtDate(x.created))}</a>${x.status === 'done' ? notesText(x) : procBadge(x.status)}</div>`).join('')}</div></div>`;
 }
 function bindPc() {
-  $$('#vJob [data-pcgo]').forEach(b => b.onclick = () => go('#new/pc/' + b.dataset.pcgo));
+  $$('#vJob [data-pcgo]').forEach(b => b.onclick = () => { pcIntent = b.dataset.intent || null; pcAck = b.dataset.ack ? b.dataset.pcgo : null; go('#new/pc/' + b.dataset.pcgo); });
+  // Засагдаагүй R1 байвал илгээхээс өмнө баталгаажуулна
+  $$('#vJob [data-pcsend]').forEach(b => b.onclick = () => {
+    if (current.findings && getIssues().some(x => x.severity === 'R1')) { current.pcConfirm = true; renderJob(); $('.r1confirm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    else { pcIntent = 'send'; pcAck = null; go('#new/pc/' + b.dataset.pcsend); }
+  });
+  $$('#vJob [data-pcno]').forEach(b => b.onclick = () => { current.pcConfirm = false; renderJob(); });
+  $$('#vJob [data-goissue]').forEach(b => b.onclick = () => focusIssue(b.dataset.goissue));
   $$('#vJob [data-pcretry]').forEach(b => b.onclick = async () => {
     b.disabled = true;
     try { await api(`/api/jobs/${b.dataset.pcretry}/precheck`, { method: 'POST', body: '{}' }); refreshJob(b.dataset.pcretry); }
@@ -3197,7 +3310,14 @@ function bindWf() {
   $$('[data-wf]').forEach(b => b.onclick = async () => {
     const id = current.id, act = b.dataset.wf;
     if (act === 'timeline') { current.wfOpen = !current.wfOpen; renderJob(); return; }
-    if (act === 'resubmit') { go('#recheck/' + (current.job.root_id || current.job.parent_id || id)); return; }
+    if (act === 'resubmit') {
+      const d = current.wf, fb = d?.fb?.[d.fbSel], r1 = fb && current.job.restricted ? fbProgress(fb).r1 : 0;
+      if (r1 && !current.resubAck) { current.resubConfirm = r1; renderJob(); $('.r1confirm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      current.resubAck = false; current.resubConfirm = 0;
+      go('#recheck/' + (current.job.root_id || current.job.parent_id || id)); return;
+    }
+    if (act === 'resubok') { current.resubAck = true; current.resubConfirm = 0; go('#recheck/' + (current.job.root_id || current.job.parent_id || id)); return; }
+    if (act === 'resubno') { current.resubConfirm = 0; renderJob(); return; }
     if (act === 'diff') {
       const box = $('#diffBox'); box.innerHTML = '<div class="sub">Тооцоолж байна…</div>';
       try {
@@ -3714,7 +3834,7 @@ document.addEventListener('click', e => {
 });
 
 // Тэмдэглэл: анхдагчаар нэг мөр (түвшин + гарчиг). Дарвал асуудал, засвар; түүн дотор нотолгоо, найруулгын санал.
-let openIds = new Set(), expandAll = false, openActs = new Set(), openGaps = new Set();
+let openIds = new Set(), closedIds = new Set(), expandAll = false, openActs = new Set(), openGaps = new Set();
 
 // Хянагчийн гараар нэмэх тэмдэглэл: manualOpen = { anchor, quote, id? (засах үед), severity, module, title, issue, required_action, err? }
 let manualOpen = null, lastSel = null;
@@ -3892,7 +4012,9 @@ function lessonsHtml(f) {
 
 function commentHtml(x) {
   const ev = Array.isArray(x.evidence) ? x.evidence : (x.evidence ? [{ source: '', detail: String(x.evidence) }] : []);
-  const open = expandAll || openIds.has(x.id);
+  // R1 (засагдаагүй) анхнаасаа нээлттэй — хэрэглэгч хаасныг closedIds санана; R2–R4 хураагдсан
+  const open = expandAll || openIds.has(x.id) || (x.severity === 'R1' && !x._done && x.recheck_status !== 'RESOLVED' && !closedIds.has(x.id));
+  const ak = anchorKey(x.anchor);
   const deep = x.why_it_matters || ev.length || x.suggested_text;
   const where = anchorKey(x.anchor) ? linkHtml({ anchor: x.anchor, category: 'report' }) : '';
   const rc = x.recheck_status ? RC[x.recheck_status] || RC.UNABLE : null;
@@ -3902,7 +4024,7 @@ function commentHtml(x) {
   const mod = moduleOf(x);
   const imps = (Array.isArray(x.impacts) ? x.impacts : []).filter(i => i && (i.element || i.action));
   return `<details class="cmt ${x.severity}${dv === 'REJECTED' ? ' is-rej' : ''}${x.recheck_status === 'RESOLVED' || x._done ? ' is-ok' : ''}" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${open ? 'open' : ''}>
-    <summary class="cmt-s">${x._fb ? fbTick(x, x._fbCan) : ''}<span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${secLinks(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
+    <summary class="cmt-s">${x._fb ? fbTick(x, x._fbCan) : ''}<span class="sev ${x.severity}">${SEV_MN[x.severity]}</span>${rc ? `<span class="st ${rc[1]}">${rc[0]}</span>` : ''}${dec ? `<span class="dpill ${DEC_CLS[dv]}">${DEC_MN[dv]}</span>` : ''}${x.origin === 'rule_engine' ? '<span class="obadge" title="Кодоор (AI-гүй) шалгасан — 100% давтагдана">Систем шалгасан</span>' : ''}${x.origin === 'manual' ? `<span class="obadge man" title="Хянагч гараар нэмсэн${x.author ? ' — ' + esc(x.author) : ''}">Гараар нэмсэн</span>` : ''}${(x.lesson_refs || []).length ? `<span class="obadge lsn" title="Захирлын өмнөх шийдвэрээс суралцсан">Сургамж</span>` : ''}${ak ? `<button type="button" class="cmt-loc" data-goto="${esc(ak.block)}"${ak.row ? ` data-gotorow="${ak.row}"` : ''} title="Тайлангийн энэ мөр рүү очих">📍 ${esc(ak.block + (ak.row ? 'R' + ak.row : ''))}</button>` : ''}<span class="cmt-t">${x.quote_check?.status === 'not_found' ? '<span class="qc-warn" title="Ишлэл тайлангаас олдсонгүй">⚠</span>' : ''}${secLinks(plain(shortTitle(x)))}</span><span class="chev" aria-hidden="true"></span></summary>
     <div class="cmt-b">
       ${qcHtml(x)}
       ${where || ev.length ? `<div class="locs">${where}${ev.map(e => linkHtml(e)).filter(Boolean).join('')}</div>` : ''}
@@ -3971,6 +4093,7 @@ function renderAnnotated(f, issues) {
     ${canManual() ? `<button class="btn sm" data-addc="" title="Тодорхой догол мөрөнд хамаарахгүй, тайлан бүхэлд хамаарах тэмдэглэл">+ Ерөнхий тэмдэглэл</button>` : ''}
     <button class="btn sm" id="expandAll">${expandAll ? 'Бүх тэмдэглэлийг хаах' : 'Бүх тэмдэглэлийг нээх'}</button></div></div>`;
 
+  if (!issues.length && f && f.review) html += `<div class="empty-ok"><b>✓ Засах санал олдсонгүй</b>AI таны тайлангаас засах зүйл илрүүлсэнгүй.</div>`;
   const gen = general.filter(filt);
   if (gen.length) html += `<div class="general"><h3 class="sec-h">Тайлан бүхэлд хамаарах тэмдэглэл <span>· ${gen.length}</span></h3><div class="cmts">${gen.map(x => commentHtml(x)).join('')}</div></div>`;
   if (!doc) {
@@ -4024,7 +4147,7 @@ function tocHtml(doc, byBlock, filt) {
   blocks.forEach((b, i) => {
     if (tocStart >= 0 && i >= tocStart && i <= tocEnd) return;
     const t = String(b.text || '').trim();
-    if (LV[b.kind] === undefined || !t || /^(хүснэгт|зураг|график|диаграм)\s*\d/i.test(t)) return;
+    if (LV[kindOf(b)] === undefined || !t || /^(хүснэгт|зураг|график|диаграм)\s*\d/i.test(t)) return;
     heads.push({ id: b.id, i, lv: LV[b.kind], text: t });
   });
   // Дугаартай гарчиг (1., 1.2, 2.3.1 …) хангалттай байвал зөвхөн тэдгээрийг — 5C-ийн дэд шошго г.м. хасагдана
@@ -4044,11 +4167,11 @@ function tocHtml(doc, byBlock, filt) {
     // Засагдсан (RESOLVED) санал алдаа биш — мөрийн өнгийг зөвхөн засагдаагүйгээр тооцож, бүгд засагдсан бол ногоон
     const open = cs.filter(x => x.recheck_status !== 'RESOLVED');
     const top = open.length ? open.reduce((m, x) => SEV_ORDER[x.severity] < SEV_ORDER[m] ? x.severity : m, 'R4') : (cs.length ? 'OK' : null);
-    return `<a href="#" class="lv${h.lv}" data-toc="${esc(h.id)}" title="${esc(h.text)}">${top ? `<i class="dot ${top}"></i>` : '<i class="dot"></i>'}<span>${esc(h.text.slice(0, 70))}</span>${cs.length ? `<b class="n ${top || ''}">${cs.length}</b>` : ''}</a>`;
+    return `<a href="#" class="lv${h.lv}" data-toc="${esc(h.id)}" title="${esc(h.text)}">${top ? `<i class="dot ${top}"></i>` : '<i class="dot"></i>'}<span>${esc(h.text.slice(0, 70))}</span>${cs.length ? `<b class="n ${top || ''}"${top && top !== 'OK' ? ` title="${esc(SEV_MN[top])}"` : ''}>${top && top !== 'OK' ? top + '·' : ''}${cs.length}</b>` : ''}</a>`;
   }).join('');
   const miss = (missing.length ? `<div class="toc-miss" title="Тайлангийн агуулгын жагсаалтад байгаа ч тайлангийн биед ийм дугаартай гарчиг олдсонгүй"><div class="toc-h">Агуулгад бий, тайланд алга</div>${missing.slice(0, 12).map(t => `<div>${esc(t.slice(0, 70))}</div>`).join('')}</div>` : '')
     + (renamed.length ? `<div class="toc-miss warn" title="Ийм дугаартай гарчиг тайланд бий, гэхдээ нэр нь агуулгын жагсаалтаас өөр бичигдсэн"><div class="toc-h">Агуулгатай гарчиг зөрсөн</div>${renamed.slice(0, 12).map(t => `<div>${esc(t.slice(0, 70))}</div>`).join('')}</div>` : '');
-  return `<nav class="toc noprint"><div class="toc-h">Агуулга</div>${rows}${miss}<div class="toc-leg"><span><i class="dot R1"></i>Ноцтой</span><span><i class="dot R2"></i>Томоохон</span><span><i class="dot R3"></i>Бага</span></div></nav>`;
+  return `<nav class="toc noprint"><div class="toc-h">Агуулга</div>${rows}${miss}<div class="toc-leg"><span class="sevk R1">R1 Ноцтой</span><span class="sevk R2">R2 Томоохон</span><span class="sevk R3">R3 Бага</span></div></nav>`;
 }
 function gotoBlock(id) {
   let el = document.getElementById('b-' + id);
@@ -4056,6 +4179,10 @@ function gotoBlock(id) {
   if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1500);
+}
+// Word-д тод бичсэн урт догол мөрийг задлагч гарчиг гэж тэмдэглэдэг — 140+ тэмдэгттэй бол энгийн догол мөрөөр харуулна
+function kindOf(b) {
+  return /^(title|h\d)$/.test(b.kind) && String(b.text || '').trim().length > 140 ? 'p' : b.kind;
 }
 function blockRow(b, cs) {
   let html = '';
@@ -4068,8 +4195,12 @@ function blockRow(b, cs) {
     } else {
       body = highlight(b.text || '', cs.map(x => ({ q: x.quote_check?.matched_text || x.quote, sev: x.recheck_status === 'RESOLVED' ? 'OK' : x.severity, id: x.id })));
     }
+    // Мөрийн дугаарын доор: хамгийн өндөр зэрэглэл + саналын тоо (дарахад тэр мөрийн саналуудыг нээнэ)
+    const open = cs.filter(x => x.recheck_status !== 'RESOLVED' && !x._done);
+    const rtop = open.length ? open.reduce((m, x) => SEV_ORDER[x.severity] < SEV_ORDER[m] ? x.severity : m, 'R4') : 'OK';
+    const badge = cs.length ? `<button class="rsev ${rtop}" data-rowc="${esc(b.id)}" title="${cs.length} санал${open.length ? ` · хамгийн өндөр: ${esc(SEV_MN[rtop])}` : ' · бүгд засагдсан'} — дарж нээх" aria-label="${esc(b.id)}: ${cs.length} санал">${rtop === 'OK' ? '✓' : rtop}·${cs.length}</button>` : '';
     html += `<div class="row ${cs.length ? 'has-c sev-' + top : ''}" id="b-${b.id}">
-      <div class="para k-${b.kind}"><span class="pid">${b.id}</span>${body}</div>
+      <div class="para k-${kindOf(b)}"><span class="pid">${b.id}</span>${badge}${body}</div>
       <div class="side">${canManual() ? `<button class="addc" data-addc="${b.id}" title="Энэ хэсэгт өөрийн тэмдэглэл нэмэх (текст тодруулж сонгоод дарвал ишлэл болно)">+ Тэмдэглэл</button>` : ''}${cs.map(x => commentHtml(x)).join('')}</div></div>`;
   }
   return html;
@@ -4123,7 +4254,17 @@ function bindJob() {
   $$('a.seclink').forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); gotoSec(a.dataset.sec, +a.dataset.secrow || 0); });
   $$('[data-toc]').forEach(a => a.onclick = e => { e.preventDefault(); gotoBlock(a.dataset.toc); });
   // Нээсэн тэмдэглэлүүдийг дахин зурахад хадгална
-  $$('details.cmt').forEach(d => d.addEventListener('toggle', () => { if (d.open) openIds.add(d.dataset.id); else openIds.delete(d.dataset.id); }));
+  $$('details.cmt').forEach(d => d.addEventListener('toggle', () => { if (d.open) { openIds.add(d.dataset.id); closedIds.delete(d.dataset.id); } else { openIds.delete(d.dataset.id); closedIds.add(d.dataset.id); } }));
+  // Санал → тайлангийн мөр (P#/T#R#); мөрийн тэмдэг → тэр мөрийн саналуудыг нээх
+  $$('[data-goto]').forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); gotoSec(b.dataset.goto, +b.dataset.gotorow || 0); });
+  $$('[data-rowc]').forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const row = document.getElementById('b-' + b.dataset.rowc); if (!row) return;
+    row.querySelectorAll('.side details.cmt').forEach(d => { d.open = true; });
+    const first = row.querySelector('.side details.cmt'); if (!first) return;
+    first.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    row.querySelectorAll('.side details.cmt').forEach(d => { d.classList.add('flash'); setTimeout(() => d.classList.remove('flash'), 1600); });
+  });
   // Тайлан дээрх тодруулсан хэсэг → холбогдох тэмдэглэлийг нээх
   $$('mark[data-issue]').forEach(m => m.onclick = () => {
     const el = document.getElementById('c-' + m.dataset.issue); if (!el) return;
@@ -4132,7 +4273,7 @@ function bindJob() {
   });
   $$('.act-rel').forEach(d => d.ontoggle = () => { d.open ? openActs.add(+d.dataset.act) : openActs.delete(+d.dataset.act); });
   $$('.gap').forEach(g => g.onclick = () => { openGaps.add(g.dataset.gap); renderJob(); });
-  const ea = $('#expandAll'); if (ea) ea.onclick = () => { expandAll = !expandAll; if (!expandAll) openIds.clear(); renderJob(); };
+  const ea = $('#expandAll'); if (ea) ea.onclick = () => { expandAll = !expandAll; if (!expandAll) { openIds.clear(); $$('details.cmt').forEach(d => closedIds.add(d.dataset.id)); } else closedIds.clear(); renderJob(); };
   const rb = $('#recheckBtn'); if (rb) rb.onclick = () => go('#recheck/' + id);
   const fb = $('#finalBtn'); if (fb) fb.onclick = async () => {
     const lv = finalVerdict(current.job);
