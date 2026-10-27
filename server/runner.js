@@ -531,7 +531,8 @@ async function runJob(jobDir, ctl = { children: new Set() }) {
   } catch (e) {
     addEvent(jobDir, 'error', e.message);
     if (stateOf(jobDir).status !== 'cancelled') writeState(jobDir, { status: 'failed', error: e.message, finished: nowIso() });
-    logRun(aiRun, { status: 'failed', job: path.basename(jobDir), error: e.message });
+    if (aiRun) logRun(aiRun, { status: 'failed', job: path.basename(jobDir), error: e.message });
+    else logAbort(jobDir, e.message);
   } finally {
     ctl.children.clear();
     clearWorkFiles(jobDir);
@@ -545,6 +546,14 @@ function logRun(aiRun, fields) {
   try {
     const { logged, ...rest } = aiRun;
     AL.append('ai', { type: 'AI_RUN', ...rest, ...fields, error: fields.error ? String(fields.error).slice(0, 300) : undefined });
+  } catch (e) { console.error('AI run log:', e.message); }
+}
+
+// AI_Run_ID олгохоос өмнө (файл задлах, анхны review хайх) тасарсан ажиллалт — ID-гүй, алдааг хайж олохын тулд
+function logAbort(jobDir, error) {
+  try {
+    AL.append('ai', { type: 'AI_RUN_ABORTED', source_doc_id: `SUB-${path.basename(jobDir)}`, job: path.basename(jobDir),
+      status: 'failed', stage: 'pre_ai', error: String(error || '').slice(0, 300), finished: nowIso() });
   } catch (e) { console.error('AI run log:', e.message); }
 }
 

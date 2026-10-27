@@ -623,7 +623,7 @@ async function handle(req, res) {
   if (m === 'GET' && p === '/api/openapi.yaml') return send(res, 200, 'application/yaml; charset=utf-8', fs.readFileSync(path.join(P.root, 'docs', 'openapi.yaml')));
   // SP-118-04/03 §9: api, rulepack, prompt, model хувилбар
   if (m === 'GET' && p === '/api/version') {
-    const last = AL.readAll('ai', { limit: 1 })[0];
+    const last = AL.readAll('ai', { limit: 50 }).reverse().find(r => r.type === 'AI_RUN');   // AI_RUN_ABORTED-д model байхгүй
     return sendJson(res, 200, { api: S.API_VERSION, schema: S.SCHEMA_VERSION, rulepack: S.RULEPACK, prompt_template_id: S.PROMPT_TEMPLATE_ID,
       recheck_template_id: S.RECHECK_TEMPLATE_ID, last_model: last?.model || null, node: process.version });
   }
