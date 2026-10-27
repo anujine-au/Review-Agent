@@ -2954,10 +2954,14 @@ document.addEventListener('click', async e => {
 });
 // Аудиторт илгээгдсэн feedback (царцсан) — тайлангийн тэмдэглэлийн загвараар
 let fbView = 'doc', fbDoneFilter = 'ALL';
-// Аудиторын «Зассан» тэмдэглэгээ: зөвхөн сүүлийн feedback, төлөв RETURNED, аудиторын хуудас дээр өөрчилнө
+// Аудиторын «Зассан» тэмдэглэгээ: аудитор / ахлах аудиторын хуудас дээр бүх шатанд, аль ч feedback-д өөрчилнө
 function fbCanMark(fb) {
+  return !!current.job?.restricted;
+}
+// Тайлан дээр шууд засах: зөвхөн сүүлийн feedback, төлөв RETURNED
+function fbCanEdit(fb) {
   const rel = Object.keys(current.wf?.fb || {}).map(Number);
-  return !!current.job?.restricted && current.job?.workflow?.state === 'RETURNED' && fb.version === Math.max(...rel);
+  return fbCanMark(fb) && current.job?.workflow?.state === 'RETURNED' && fb.version === Math.max(...rel);
 }
 function fbProgress(fb) {
   const pr = fb.progress || {}, total = fb.items.length, done = fb.items.filter(x => pr[x.id]?.done).length;
@@ -2994,7 +2998,7 @@ function fxHtml(x) {
   const fb = current.wf?.fb?.[current.wf.fbSel], ed = fb?.ed;
   if (!ed || !ed.available) return '';
   const it = (ed.items || []).find(i => i.id === x.id); if (!it) return '';
-  const can = x._fbCan, done = (ed.edits || []).filter(e => e.rv_id === x.id && e.status === 'applied');
+  const can = x._fxCan, done = (ed.edits || []).filter(e => e.rv_id === x.id && e.status === 'applied');
   if (done.length) return done.map(e => `<div class="fx done${e.auto ? ' auto' : ''}"><b>${e.auto ? '🤖 AI тайланд засварласан' : '✓ Тайланд засварласан'}${e.block ? ' · ' + esc(e.block) : ''}</b>
       ${e.result && e.result !== 'ok' ? '<div class="warn">⚠ Энэ засвар одоогийн тайланд хэрэгжихгүй болсон (өөр засвартай давхцсан) — буцаагаад дахин хийнэ үү.</div>' : ''}
       ${e.auto && e.note ? `<div class="sub">AI: ${esc(e.note)}</div>` : ''}
@@ -3026,7 +3030,7 @@ function fxHtml(x) {
 function fxBarHtml(fb) {
   const ed = fb.ed; if (!ed) return '';
   if (!ed.available) return ed.items?.length ? `<div class="fxbar"><span class="sub">✎ Тайланд шууд засах боломжгүй: ${esc(ed.reason)}</span></div>` : '';
-  const can = fbCanMark(fb), af = ed.autofix;
+  const can = fbCanEdit(fb), af = ed.autofix;
   if (!ed.applied && !can && !af) return '';
   // AI-ийн автомат засвар (захирал буцаахад эхэлдэг): явц, үр дүн, Track Changes-тэй Word
   const afHtml = !af ? '' : af.state === 'running'
@@ -3049,8 +3053,8 @@ function feedbackHtml() {
     docs[fb.job] = null;
     apiText(`/api/jobs/${fb.job}/document`).then(t => { docs[fb.job] = JSON.parse(t); renderJob(); }).catch(() => { docs[fb.job] = false; renderJob(); });
   }
-  const can = fbCanMark(fb), { pr, done, total } = fbProgress(fb);
-  const items = fb.items.map(x => ({ ...x, _fb: true, _done: !!pr[x.id]?.done, _fbCan: can }))
+  const can = fbCanMark(fb), fxCan = fbCanEdit(fb), { pr, done, total } = fbProgress(fb);
+  const items = fb.items.map(x => ({ ...x, _fb: true, _done: !!pr[x.id]?.done, _fbCan: can, _fxCan: fxCan }))
     .filter(x => fbDoneFilter === 'ALL' || (fbDoneFilter === 'DONE' ? x._done : !x._done));
   const dchip = (k, l, n) => `<button class="fchip ${fbDoneFilter === k ? 'on' : ''}" data-fbdf="${k}">${l} <span class="k">${n}</span></button>`;
   const head = `<div class="card pad" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Захирлын буцаасан санал — v${fb.version}</h3>

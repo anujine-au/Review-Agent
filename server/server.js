@@ -51,6 +51,7 @@ const MAN = require('./manual');
 const ED = require('./edits');
 const SUG = require('./suggest');
 const AF = require('./autofix');
+const HF = require('./hefesto');   // Hefesto телеметр (token-ийг process.env-ээс хасна)
 const { convertDocx } = require('./extract');
 // Шийдвэр / илгээлт / эхлүүлэлтийг hash-chain логт (SP-118-04/01 §6 Decision, Submission лог)
 const auditLog = (action, fields) => { try { AL.append('audit', { action, ...fields }); } catch (e) { console.error('audit log:', e.message); } };
@@ -354,6 +355,8 @@ function startAutofix(rootId, n, who, audit, notify, force = false) {
   const r = AF.start(rootId, n, who, { force, onDone: s => {
     auditLog('report.autofix', { job: rootId, version: n, state: s.state, fixed: s.fixed, drafts: s.drafts, manual: s.manual, total: s.total, user: who });
     console.log(`[${C.timeHms()}] AUTOFIX ${rootId} v${n} ${s.state} fixed=${s.fixed}/${s.total}${s.error ? ' — ' + s.error : ''}`);
+    if (s.state === 'done') HF.report('FIX', `AI захирлын баталсан саналаар тайланд ${s.fixed}/${s.total} засвар (Track Changes) бэлтгэлээ — job ${rootId} v${n}`);
+    else if (s.state === 'failed') HF.report('ERROR', 'AI-ийн автомат засвар амжилтгүй боллоо', `job ${rootId} v${n}: ${s.error || ''}`);
     if (notify && s.state === 'done' && s.fixed) NT.send(notify, { kind: 'AUTOFIX', job: rootId, version: n, audit,
       text: `${audit.code || ''} ${audit.branch || ''}: AI ${s.fixed} саналыг тайланд засаж оруулсан${s.drafts ? ` (${s.drafts} ноорог)` : ''}, ${s.manual} нь гараар засах — Track Changes-тэй Word файлыг шалгана уу`.trim() });
   } });
@@ -402,7 +405,7 @@ function restoreInputs(dir) {
 }
 
 function startNext() {
-  if (active) return;
+  if (active || HF.paused()) return;   // Hefesto-ийн админ агентыг түр зогсоосон бол шинэ хяналт эхлүүлэхгүй
   const next = listJobIds().find(id => jobStatus(jobDir(id)) === 'queued');
   if (!next) return;
   const dir = jobDir(next);
@@ -410,8 +413,14 @@ function startNext() {
   const ctl = { children: new Set() };
   active = { id: next, ctl };
   console.log(`[${C.timeHms()}] START ${next}`);
+  const pc = jobMeta(next).kind === 'precheck';
+  HF.setActivity(pc ? 'Аудиторын өөрөө шалгах хүсэлтээр тайланг AI-аар хянаж байна' : 'Салбарын аудитын тайланг AI-аар хянаж байна');
   active.promise = runJob(dir, ctl).catch(e => console.error('runJob:', e)).finally(() => {
     console.log(`[${C.timeHms()}] END   ${next} (${jobStatus(dir)})`);
+    HF.setActivity('');
+    const fin = jobStatus(dir);
+    if (fin === 'done') HF.report('ANALYSIS', `Аудитын тайлангийн AI хяналт дууслаа${pc ? ' (өөрөө шалгах)' : ''} — job ${next}`);
+    else if (fin === 'failed') HF.report('ERROR', 'Аудитын тайлангийн AI хяналт амжилтгүй боллоо', `job ${next}: ${(C.readJson(path.join(dir, 'state.json')) || {}).error || ''}`);
     try { WF.sync(WF.rootOf(next)); } catch (e) { console.error('workflow sync:', e.message); }   // AI дуусав → CAE_REVIEW
     const jn = jobMeta(next);
     if (jn.kind === 'precheck') {
@@ -1177,6 +1186,7 @@ async function handle(req, res) {
     }
     // Аудиторын «Зассан» тэмдэглэгээ (feedback бүрийн мөрөөр). Feedback өөрөө царцсан хэвээр — тусдаа progress_v{n}.json.
     // Энэ нь аудиторын өөрийн тэмдэглэл; засагдсан эсэхийг дахин хяналт (M14) бие даан шалгана.
+    // Баг (аудитор, ахлах аудитор) ажлын урсгалын бүх шатанд, release хийсэн аль ч хувилбар дээр тэмдэглэнэ.
     const fpm = rest.match(/^\/feedback\/(\d{1,3})\/progress(?:\/([A-Za-z0-9_-]{1,40}))?$/);
     if (fpm && ((m === 'GET' && !fpm[2]) || (m === 'PATCH' && fpm[2]))) {
       const n = Number(fpm[1]), rel = WF.releasedVersions(rootId);
@@ -1185,8 +1195,6 @@ async function handle(req, res) {
       const all = C.readJson(pf) || {};
       if (m === 'GET') return sendJson(res, 200, { progress: all });
       if (!inTeam) return sendErr(res, 403, 'Зөвхөн тайлангийн багийн гишүүн «Зассан» гэж тэмдэглэнэ');
-      const wf = WF.stateOf(rootId);
-      if (wf.state !== 'RETURNED' || n !== rel[rel.length - 1]) return sendErr(res, 409, 'Засвар илгээсний дараа тэмдэглэгээг өөрчлөх боломжгүй');
       const fb = C.readJson(path.join(jobDir(rootId), 'feedback', `feedback_v${n}.json`)) || {};
       if (!(fb.items || []).some(x => x.id === fpm[2])) return sendErr(res, 404, 'Санал олдсонгүй');
       const body = await readJsonBody(req);
@@ -1501,6 +1509,7 @@ async function handle(req, res) {
 function onRequest(req, res) {
   handle(req, res).catch(e => {
     console.error(`[${C.timeHms()}] ERROR ${e.message}`);
+    HF.report('ERROR', 'Вэб серверийн дотоод алдаа (HTTP 500)', `${req.method} ${String(req.url || '').split('?')[0]}: ${e.message}\n${e.stack || ''}`);
     if (!res.headersSent) { try { sendErr(res, 500, 'Серверийн алдаа'); } catch { /* ignore */ } }
   });
 }
@@ -1541,6 +1550,7 @@ for (const [host] of binds) {
 function banner() {
   const scheme = tls ? 'https' : 'http';
   accessLog('system', 'SERVER_START', `lan=${LAN} port=${PORT} efs=${EFS_ON} retention=${RETENTION_DAYS}`);
+  if (HF.enabled()) { HF.start(); HF.report('INFO', 'Review Agent вэб сервер эхэллээ'); }
   console.log('\n  Audit Report Reviewer — вэб сервер ажиллаж байна (Node.js ' + process.version + ')');
   console.log(`  Энэ компьютер дээр : ${scheme}://localhost:${PORT}`);
   if (LAN) {
@@ -1550,6 +1560,7 @@ function banner() {
   } else console.log('  Сүлжээ             : хаалттай (нээх бол --lan, HTTPS-ээр)');
   if (U.hasAdmin()) console.log('  Нэвтрэлт           : нэрийн хэрэглэгч (admin нь вэб дээр хэрэглэгч нэмнэ)');
   else console.log(`  Анхны тохиргоо код : ${code}  ← вэб дээр энэ кодоор нэвтэрч admin үүсгэнэ`);
+  console.log(`  Hefesto телеметр   : ${HF.enabled() ? 'идэвхтэй (heartbeat 60 сек)' : 'идэвхгүй (HEFESTO_BOT_TOKEN тохируулаагүй)'}`);
   console.log(`  Шифрлэлт (EFS)     : ${EFS_ON ? 'идэвхтэй' : 'ИДЭВХГҮЙ — IT-тай холбогдоно уу'}`);
   console.log(`  Хадгалах хугацаа   : ${RETENTION_DAYS} хоног (эх файл хувилбараар хадгалагдана)`);
   console.log('  Зогсоох            : Ctrl+C\n');

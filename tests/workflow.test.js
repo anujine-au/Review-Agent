@@ -169,8 +169,10 @@ test('5. Засаад дахин оруулахад v2 үүсч, v1-ийн эх 
   // захиралд мэдэгдэл
   const n = await call(tokens.cae1, 'GET', '/api/notifications');
   assert.ok(n.json.items.some(x => x.kind === 'RESUBMITTED'));
-  // засвар илгээсний дараа «Зассан» тэмдэглэгээ түгжигдэнэ, үзэх боломжтой хэвээр
-  assert.equal((await call(tokens.aud1, 'PATCH', `/api/jobs/${A}/feedback/1/progress/RV-T-C1-003`, { done: true })).status, 409);
+  // засвар илгээсний дараа ч «Зассан» тэмдэглэгээг баг (аудитор, ахлах аудитор) өөрчилж болно; захирал өөрчлөхгүй
+  assert.equal((await call(tokens.aud1, 'PATCH', `/api/jobs/${A}/feedback/1/progress/RV-T-C1-003`, { done: true })).status, 200);
+  assert.equal((await call(tokens.lead1, 'PATCH', `/api/jobs/${A}/feedback/1/progress/RV-T-C1-003`, { done: false })).status, 200);
+  assert.equal((await call(tokens.cae1, 'PATCH', `/api/jobs/${A}/feedback/1/progress/RV-T-C1-003`, { done: true })).status, 403);
   assert.ok((await call(tokens.aud1, 'GET', `/api/jobs/${A}/feedback/1/progress`)).json.progress['RV-T-C1-001']);
 });
 
