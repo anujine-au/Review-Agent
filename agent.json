@@ -1,0 +1,19 @@
+{
+  "agent_id": "review-agent",
+  "name": "Аудитын тайлан хянагч агент",
+  "purpose": "Аудитын тайланг Дотоод аудитын газрын захирлын өнцгөөс хянаж, илэрц, дүгнэлт, зөвлөмжийн үндэслэл, уялдаа холбоо, эрсдэлийн үнэлгээ болон тайлангийн чанар, бүрэн бүтэн байдалд үнэлэлт өгч, шаардлагатай сайжруулалтын саналыг боловсруулна.",
+  "owner_team": "Дотоод аудитын газар",
+  "deployment": "external",
+  "runtime": "Node.js (гадны npm сангүй)",
+  "entrypoint": "server/server.js",
+  "spec": "hefesto-spec.md",
+  "plan": "plan.md",
+  "company_brain": {
+    "agent_id": "review-agent"
+  },
+  "hefesto": {
+    "telemetry": "server/hefesto.js",
+    "claims_tasks": false,
+    "connectors": []
+  }
+}
