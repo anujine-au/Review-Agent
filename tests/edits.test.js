@@ -83,7 +83,7 @@ before(async () => {
   J = makeJob(); PDFJ = makeJob({ report: 'Тайлан.pdf', buf: Buffer.from('%PDF-1.4 test') }); SUB = makeJob({ state: 'RESUBMITTED' });
   const nodeDir = path.dirname(process.execPath), sys = process.env.SystemRoot || 'C:\\Windows';
   server = spawn(process.execPath, [path.join(ROOT, 'server', 'server.js'), '--port', String(PORT)], {
-    env: { ...process.env, USERPROFILE: DIRS.home, PATH: [nodeDir, path.join(sys, 'System32')].join(';') }, stdio: 'ignore', windowsHide: true });
+    env: { ...process.env, HEFESTO_BOT_TOKEN: '', HEFESTO_API: '', USERPROFILE: DIRS.home, PATH: [nodeDir, path.join(sys, 'System32')].join(';') }, stdio: 'ignore', windowsHide: true });
   for (let i = 0; i < 100; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/api/auth-mode`)).ok) break; } catch { /* асаж байна */ } await new Promise(r => setTimeout(r, 100)); }
   for (const u of ['cae1', 'aud1', 'lead1', 'aud2']) {
     const r = await call(null, 'POST', '/api/login', { username: u, password: PW });

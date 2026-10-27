@@ -70,7 +70,8 @@ before(async () => {
   E = makeJob({ workflow: null });                                  // хуучин job (workflow талбаргүй)
   const nodeDir = path.dirname(process.execPath), sys = process.env.SystemRoot || 'C:\\Windows';
   server = spawn(process.execPath, [path.join(ROOT, 'server', 'server.js'), '--port', String(PORT)], {
-    env: { ...process.env, USERPROFILE: DIRS.home, PATH: [nodeDir, path.join(sys, 'System32'), path.join(sys, 'System32', 'WindowsPowerShell', 'v1.0')].join(';') },
+    // HEFESTO_*: тестийн сервер жинхэнэ Hefesto руу телеметр илгээхгүй (Hefesto-ийн интеграцын run token-той ажиллуулдаг)
+    env: { ...process.env, HEFESTO_BOT_TOKEN: '', HEFESTO_API: '', USERPROFILE: DIRS.home, PATH: [nodeDir, path.join(sys, 'System32'), path.join(sys, 'System32', 'WindowsPowerShell', 'v1.0')].join(';') },
     stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let outLog = ''; server.stdout.on('data', d => { outLog += d; }); server.stderr.on('data', d => { outLog += d; });
   for (let i = 0; i < 100; i++) { try { const r = await fetch(`http://127.0.0.1:${PORT}/api/auth-mode`); if (r.ok) break; } catch { /* асаж байна */ } await new Promise(r => setTimeout(r, 100)); }
